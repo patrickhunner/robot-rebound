@@ -1,0 +1,62 @@
+import { expect, test } from "@playwright/test";
+
+test("two isolated players create, join, and start a match", async ({ browser }) => {
+  const hostContext = await browser.newContext();
+  const guestContext = await browser.newContext();
+  const host = await hostContext.newPage();
+  const guest = await guestContext.newPage();
+
+  await host.goto("/");
+  await host.getByLabel("Display name").fill("Ada");
+  await host.getByRole("button", { name: "Create room" }).click();
+  await expect(host.getByText(/Room [A-Z2-9]{6}/)).toBeVisible();
+  const roomText = await host.locator(".room-code b").textContent();
+  expect(roomText).toMatch(/^[A-Z2-9]{6}$/);
+  const readDestinations = () => host.locator(".destination").evaluateAll((items) => items.map((item) => `${item.getAttribute("title")}@${item.parentElement?.getAttribute("aria-label")}`));
+  const boardBeforeShuffle = await readDestinations();
+  await host.getByRole("button", { name: "Shuffle Board" }).click();
+  await expect.poll(readDestinations).not.toEqual(boardBeforeShuffle);
+  await host.getByLabel("Rounds").fill("20");
+  await host.getByLabel("Bidding window").selectOption("30");
+  await host.getByLabel("Proof time").selectOption("15");
+  await host.getByRole("button", { name: "Save settings" }).click();
+
+  await guest.goto("/");
+  await guest.getByLabel("Room code").fill(roomText);
+  await guest.getByRole("button", { name: "Join" }).click();
+  await expect(guest.getByRole("alert")).toHaveText("Enter a display name");
+  await expect(guest.getByLabel("Display name")).toBeFocused();
+  await guest.getByLabel("Display name").fill("Grace");
+  await guest.getByRole("button", { name: "Join" }).click();
+  await expect(host.getByText("Grace")).toBeVisible();
+  await expect(guest.getByText("Ada")).toBeVisible();
+
+  await host.getByRole("button", { name: "Start match", exact: true }).click();
+  await expect(host.getByText("ROUND 1 / 20")).toBeVisible();
+  await expect(guest.getByText("ROUND 1 / 20")).toBeVisible();
+
+  const placer = await host.getByText("Place the robots").isVisible() ? host : guest;
+  await expect(placer.locator(".game-shell")).toHaveClass(/active-turn/);
+  await expect(placer.locator(".robot")).toHaveCount(5);
+  await placer.locator(".robot").first().click();
+  await expect(placer.locator(".selected-robot")).toHaveCount(1);
+  await placer.locator(".placement-hint").first().click();
+  await expect(placer.locator(".selected-robot")).toHaveCount(1);
+  await expect(placer.getByRole("button", { name: "Reveal destination" })).toHaveClass(/waiting-action/);
+  await placer.getByRole("button", { name: "Randomize robots" }).click();
+  await placer.getByRole("button", { name: "Reveal destination" }).click();
+  await expect(host.locator(".target-banner")).toBeVisible();
+  await expect(guest.locator(".target-banner")).toBeVisible();
+  await expect(host.locator(".cell").first()).toHaveCSS("opacity", "1");
+  await expect(host.getByLabel("Move count")).toBeFocused();
+  await expect(host.locator(".quick-bids button")).toHaveCount(30);
+  await host.locator(".quick-bids").getByRole("button", { name: "5", exact: true }).click();
+  await expect(guest.getByLabel("Move count")).toBeFocused();
+  await guest.locator(".quick-bids").getByRole("button", { name: "6", exact: true }).click();
+  await expect(host.locator(".proof-status>strong")).toContainText("0 / 5");
+  await expect(host.getByRole("button", { name: "Reset proof" })).toBeVisible();
+  await expect(host.locator(".game-shell")).toHaveClass(/active-turn/);
+
+  await hostContext.close();
+  await guestContext.close();
+});
