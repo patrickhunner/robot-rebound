@@ -177,7 +177,7 @@ function Game({ snapshot, connected, error, onError, isDiscord }: { snapshot: Ro
   };
 
   return <main className={`game-shell ${(canPlace || canProve) ? "active-turn" : ""}`}>
-    <header><div><span className="mini-mark">RR</span><strong>Robot Rebound</strong></div><div className="room-code">{isDiscord ? "Activity" : "Room"} <b>{snapshot.code}</b><button className="copy" onClick={() => navigator.clipboard.writeText(snapshot.code)}>Copy</button></div><span className={`connection ${connected ? "online" : ""}`}>{connected ? "Live" : "Reconnecting"}</span></header>
+    <header><div><span className="mini-mark">RR</span><strong>Robot Rebound</strong></div><div className="room-code">{isDiscord ? "Discord Activity" : <>Room <b>{snapshot.code}</b><button className="copy" onClick={() => navigator.clipboard.writeText(snapshot.code)}>Copy</button></>}</div><span className={`connection ${connected ? "online" : ""}`}>{connected ? "Live" : "Reconnecting"}</span></header>
     <section className="status-bar"><div><p className="eyebrow">{snapshot.phase === "lobby" || snapshot.phase === "results" ? "MATCH" : `ROUND ${snapshot.round} / ${snapshot.roundCount}`}</p><h1>{title}</h1></div>{deadline && <div className="timer" aria-label={`${seconds} seconds remaining`}><b>{seconds}</b><span>seconds</span></div>}{unlimitedProof && <div className="timer unlimited" aria-label="Unlimited proof time"><b>∞</b><span>unlimited</span></div>}</section>
     <div className="game-grid">
       <Leaderboard snapshot={snapshot} />
@@ -219,7 +219,21 @@ function LobbyPanel({ snapshot, selfId, command }: { snapshot: Extract<RoomSnaps
   if (!isHost) return <section className="action-card"><h2>Lobby</h2><p>Waiting for the host. {snapshot.roundCount} rounds; bidding {snapshot.biddingSeconds === 0 ? "immediately" : `${snapshot.biddingSeconds}s`}; proof {snapshot.proofSeconds === "unlimited" ? "unlimited" : `${snapshot.proofSeconds}s`}.</p></section>;
   const rounds = Number(roundCount);
   const validRounds = Number.isInteger(rounds) && rounds >= 1 && rounds <= 999;
-  return <section className="action-card"><h2>Match settings</h2><div className="settings-grid"><label>Rounds<input aria-label="Rounds" type="number" min={1} max={999} value={roundCount} onChange={(event) => setRoundCount(event.target.value)} /></label><label>Bidding window<select aria-label="Bidding window" value={biddingSeconds} onChange={(event) => setBiddingSeconds(Number(event.target.value) as BiddingSeconds)}><option value={0}>Immediate</option><option value={15}>15 seconds</option><option value={30}>30 seconds</option><option value={45}>45 seconds</option><option value={60}>60 seconds</option></select></label><label>Proof time<select aria-label="Proof time" value={proofSeconds} onChange={(event) => setProofSeconds(event.target.value === "unlimited" ? "unlimited" : Number(event.target.value) as ProofSeconds)}><option value={15}>15 seconds</option><option value={30}>30 seconds</option><option value={45}>45 seconds</option><option value={60}>60 seconds</option><option value="unlimited">Unlimited</option></select></label></div><div className="lobby-actions"><button className="secondary" disabled={!validRounds} onClick={() => command("lobby:settings", { biddingSeconds, proofSeconds, roundCount: rounds })}>Save settings</button><button className="secondary" onClick={() => command("board:shuffle")}>Shuffle Board</button><button onClick={() => command("match:start")}>Start match</button></div></section>;
+  const saveSettings = (next: { biddingSeconds: BiddingSeconds; proofSeconds: ProofSeconds; roundCount: number }) => command("lobby:settings", next);
+  const changeRounds = (value: string) => {
+    setRoundCount(value);
+    const next = Number(value);
+    if (Number.isInteger(next) && next >= 1 && next <= 999) saveSettings({ biddingSeconds, proofSeconds, roundCount: next });
+  };
+  const changeBidding = (value: BiddingSeconds) => {
+    setBiddingSeconds(value);
+    saveSettings({ biddingSeconds: value, proofSeconds, roundCount: validRounds ? rounds : snapshot.roundCount });
+  };
+  const changeProof = (value: ProofSeconds) => {
+    setProofSeconds(value);
+    saveSettings({ biddingSeconds, proofSeconds: value, roundCount: validRounds ? rounds : snapshot.roundCount });
+  };
+  return <section className="action-card"><h2>Match settings</h2><p>Changes save automatically.</p><div className="settings-grid"><label>Rounds<input aria-label="Rounds" type="number" min={1} max={999} value={roundCount} onChange={(event) => changeRounds(event.target.value)} /></label><label>Bidding window<select aria-label="Bidding window" value={biddingSeconds} onChange={(event) => changeBidding(Number(event.target.value) as BiddingSeconds)}><option value={0}>Immediate</option><option value={15}>15 seconds</option><option value={30}>30 seconds</option><option value={45}>45 seconds</option><option value={60}>60 seconds</option></select></label><label>Proof time<select aria-label="Proof time" value={proofSeconds} onChange={(event) => changeProof(event.target.value === "unlimited" ? "unlimited" : Number(event.target.value) as ProofSeconds)}><option value={15}>15 seconds</option><option value={30}>30 seconds</option><option value={45}>45 seconds</option><option value={60}>60 seconds</option><option value="unlimited">Unlimited</option></select></label></div><div className="lobby-actions"><button className="secondary" onClick={() => command("board:shuffle")}>Shuffle Board</button><button disabled={!validRounds} onClick={() => command("match:start")}>Start match</button></div></section>;
 }
 
 function Leaderboard({ snapshot }: { snapshot: RoomSnapshot }) {
