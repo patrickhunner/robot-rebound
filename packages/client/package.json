@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@discord/embedded-app-sdk": "^2.5.0",
     "@robot-rebound/shared": "workspace:*",
     "@vitejs/plugin-react": "^4.3.3",
     "react": "^18.3.1",

@@ -7,9 +7,11 @@ export default defineConfig({
     host: "127.0.0.1",
     port: Number(process.env.VITE_PORT ?? 5173),
     strictPort: true,
+    allowedHosts: [".trycloudflare.com"],
     proxy: {
       "/socket.io": { target: process.env.VITE_DEV_SERVER_TARGET ?? "http://localhost:3001", ws: true },
-      "/health": process.env.VITE_DEV_SERVER_TARGET ?? "http://localhost:3001"
+      "/health": process.env.VITE_DEV_SERVER_TARGET ?? "http://localhost:3001",
+      "/api": process.env.VITE_DEV_SERVER_TARGET ?? "http://localhost:3001"
     }
   }
 });

@@ -9,6 +9,7 @@ interface Player {
   id: string; token: string; name: string; score: number; connected: boolean;
   socketId?: string; isHost: boolean; eligible: boolean; disconnectedAt?: number;
   wonTargets: Target[];
+  discordUserId?: string;
 }
 interface Bid extends BidView { order: number }
 type Phase =
@@ -44,21 +45,34 @@ export class GameRoom {
   private timer?: ReturnType<typeof setTimeout>;
   private bidSequence = 0;
 
-  constructor(code: string, name: string, biddingSeconds: BiddingSeconds, socketId: string, private readonly broadcast: Broadcast, private readonly random = Math.random, proofSeconds: ProofSeconds = 60, excludedBoardId?: string) {
+  constructor(code: string, name: string, biddingSeconds: BiddingSeconds, socketId: string, private readonly broadcast: Broadcast, private readonly random = Math.random, proofSeconds: ProofSeconds = 60, excludedBoardId?: string, discordUserId?: string) {
     this.code = code;
     this.biddingSeconds = biddingSeconds;
     this.proofSeconds = proofSeconds;
     this.board = createRandomBoard(this.random, excludedBoardId);
-    this.players.push(this.newPlayer(name, socketId, true, true));
+    this.players.push(this.newPlayer(name, socketId, true, true, discordUserId));
   }
 
-  private newPlayer(name: string, socketId: string, isHost: boolean, eligible: boolean): Player {
-    return { id: randomUUID(), token: randomBytes(24).toString("base64url"), name, score: 0, connected: true, socketId, isHost, eligible, wonTargets: [] };
+  private newPlayer(name: string, socketId: string, isHost: boolean, eligible: boolean, discordUserId?: string): Player {
+    return {
+      id: randomUUID(),
+      token: randomBytes(24).toString("base64url"),
+      name,
+      score: 0,
+      connected: true,
+      socketId,
+      isHost,
+      eligible,
+      wonTargets: [],
+      ...(discordUserId ? { discordUserId } : {})
+    };
   }
 
-  join(name: string, socketId: string, token?: string): { player: Player; reconnected: boolean } {
-    const returning = token ? this.players.find((player) => player.token === token) : undefined;
+  join(name: string, socketId: string, token?: string, discordUserId?: string): { player: Player; reconnected: boolean } {
+    const returning = discordUserId ? this.players.find((player) => player.discordUserId === discordUserId) : token ? this.players.find((player) => player.token === token) : undefined;
     if (returning) {
+      returning.name = this.resolveName(name, returning.id, discordUserId);
+      if (discordUserId) returning.discordUserId = discordUserId;
       returning.connected = true;
       returning.socketId = socketId;
       delete returning.disconnectedAt;
@@ -66,9 +80,10 @@ export class GameRoom {
       return { player: returning, reconnected: true };
     }
     if (this.players.length >= 10) throw new Error("Room is full");
-    if (this.players.some((player) => player.name.toLocaleLowerCase() === name.toLocaleLowerCase())) throw new Error("That display name is already in use");
+    const resolvedName = this.resolveName(name, undefined, discordUserId);
+    if (!discordUserId && this.players.some((player) => player.name.toLocaleLowerCase() === resolvedName.toLocaleLowerCase())) throw new Error("That display name is already in use");
     const eligible = this.phase.kind === "lobby";
-    const player = this.newPlayer(name, socketId, false, eligible);
+    const player = this.newPlayer(resolvedName, socketId, false, eligible, discordUserId);
     this.players.push(player);
     if (this.phase.kind !== "lobby") this.placementOrder.push(player.id);
     this.broadcast(this.code);
@@ -324,6 +339,20 @@ export class GameRoom {
   private requireHost(id: string): Player { const player = this.requirePlayer(id); if (!player.isHost) throw new Error("Only the host can do that"); return player; }
   private schedule(delay: number, action: () => void): void { this.clearTimer(); this.timer = setTimeout(action, delay); }
   private clearTimer(): void { if (this.timer) clearTimeout(this.timer); delete this.timer; }
+  private resolveName(name: string, selfId?: string, discordUserId?: string): string {
+    const trimmed = name.trim().slice(0, 24) || "Player";
+    if (!discordUserId) return trimmed;
+    const taken = new Set(this.players.filter((player) => player.id !== selfId).map((player) => player.name.toLocaleLowerCase()));
+    if (!taken.has(trimmed.toLocaleLowerCase())) return trimmed;
+    const suffixCandidates = [4, 6, 8];
+    for (const length of suffixCandidates) {
+      const suffix = discordUserId.slice(-length);
+      const prefixLength = Math.max(1, 24 - suffix.length - 1);
+      const candidate = `${trimmed.slice(0, prefixLength).trimEnd()}#${suffix}`.slice(0, 24);
+      if (!taken.has(candidate.toLocaleLowerCase())) return candidate;
+    }
+    return trimmed;
+  }
 }
 
 export function createRoomCode(existing: Set<string>): string {

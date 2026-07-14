@@ -7,6 +7,10 @@ export const proofSecondsSchema = z.union([z.literal(15), z.literal(30), z.liter
 export const createRoomSchema = z.object({ name: nameSchema });
 export const joinRoomSchema = z.object({ code: roomCodeSchema, name: nameSchema, token: z.string().optional() });
 export const roomCommandSchema = z.object({ code: roomCodeSchema });
+export const discordTokenExchangeSchema = z.object({
+  code: z.string().trim().min(1, "Missing Discord authorization code"),
+  instanceId: z.string().trim().min(1, "Missing Discord instance id")
+});
 export const lobbySettingsSchema = roomCommandSchema.extend({
   biddingSeconds: biddingSecondsSchema,
   proofSeconds: proofSecondsSchema,

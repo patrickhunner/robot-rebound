@@ -5,9 +5,11 @@ import {
   type BiddingSeconds, type CommandResult, type LegalMove, type ProofSeconds, type RobotId, type RoomSnapshot, type Target
 } from "@robot-rebound/shared";
 import { Board } from "./Board";
+import { bootstrapDiscordSession, isDiscordActivity, type DiscordBootstrapSession } from "./discord";
 
-const socket = io({ autoConnect: true });
+const socket = io({ autoConnect: false });
 type Session = { code: string; name: string; token: string };
+type AppMode = "loading" | "browser" | "discord";
 const loadSession = (): Session | null => { try { const value = sessionStorage.getItem("robot-rebound-session"); return value ? JSON.parse(value) as Session : null; } catch { return null; } };
 
 function send(event: string, payload: object, onResult?: (result: CommandResult) => void): void {
@@ -17,29 +19,105 @@ function send(event: string, payload: object, onResult?: (result: CommandResult)
 export function App() {
   const [snapshot, setSnapshot] = useState<RoomSnapshot | null>(null);
   const [session, setSession] = useState<Session | null>(loadSession);
+  const [discordSession, setDiscordSession] = useState<DiscordBootstrapSession | null>(null);
+  const [mode, setMode] = useState<AppMode>("loading");
   const [error, setError] = useState("");
   const [connected, setConnected] = useState(socket.connected);
+  const joinAttemptRef = useRef<string | null>(null);
+  const browserSessionRecoverableRef = useRef(Boolean(session));
+  const autoJoinFailedRef = useRef(false);
 
   useEffect(() => {
-    const onSnapshot = (next: RoomSnapshot) => { setSnapshot(next); setError(""); };
-    const onConnect = () => {
-      setConnected(true);
-      if (session) send("room:join", session, (result) => { if (!result.ok) setError(result.error ?? "Could not reconnect"); });
+    const onSnapshot = (next: RoomSnapshot) => {
+      setSnapshot(next);
+      setError("");
+      autoJoinFailedRef.current = false;
+      if (mode === "browser" && session) browserSessionRecoverableRef.current = true;
     };
-    const onDisconnect = () => setConnected(false);
-    socket.on("room:snapshot", onSnapshot); socket.on("connect", onConnect); socket.on("disconnect", onDisconnect);
-    if (socket.connected && session && !snapshot) onConnect();
+    const onConnect = () => setConnected(true);
+    const onDisconnect = () => { setConnected(false); joinAttemptRef.current = null; };
+    socket.on("room:snapshot", onSnapshot);
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
     return () => { socket.off("room:snapshot", onSnapshot); socket.off("connect", onConnect); socket.off("disconnect", onDisconnect); };
-  }, [session]);
+  }, [mode, session]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const boot = async () => {
+      if (isDiscordActivity()) {
+        setMode("discord");
+        try {
+          const next = await bootstrapDiscordSession();
+          if (cancelled) return;
+          setDiscordSession(next);
+          socket.auth = { mode: "discord", joinToken: next.joinToken };
+          socket.connect();
+        } catch (caught) {
+          if (cancelled) return;
+          setError(caught instanceof Error ? caught.message : "Unable to start the Discord Activity");
+        }
+        return;
+      }
+      setMode("browser");
+      socket.auth = {};
+      socket.connect();
+    };
+    void boot();
+    return () => { cancelled = true; socket.disconnect(); };
+  }, []);
+
+  useEffect(() => {
+    if (!socket.connected || snapshot || autoJoinFailedRef.current) return;
+    if (mode === "browser" && session && browserSessionRecoverableRef.current) {
+      const key = `browser:${session.code}:${session.token}`;
+      if (joinAttemptRef.current === key) return;
+      joinAttemptRef.current = key;
+      send("room:join", session, (result) => {
+        if (!result.ok) {
+          joinAttemptRef.current = null;
+          autoJoinFailedRef.current = true;
+          browserSessionRecoverableRef.current = false;
+          sessionStorage.removeItem("robot-rebound-session");
+          setSession(null);
+          setError(result.error ?? "Could not reconnect");
+        }
+      });
+    }
+    if (mode === "discord" && discordSession) {
+      const key = `discord:${discordSession.joinToken}`;
+      if (joinAttemptRef.current === key) return;
+      joinAttemptRef.current = key;
+      send("room:discord-join", {}, (result) => {
+        if (!result.ok) {
+          joinAttemptRef.current = null;
+          autoJoinFailedRef.current = true;
+          setError(result.error ?? "Could not join the Discord room");
+        }
+      });
+    }
+  }, [mode, session, discordSession, connected, snapshot]);
 
   const completeJoin = (name: string, result: CommandResult) => {
     if (!result.ok || !result.code || !result.token) { setError(result.error ?? "Unable to join room"); return; }
     const next = { code: result.code, name, token: result.token };
+    browserSessionRecoverableRef.current = false;
+    autoJoinFailedRef.current = false;
     sessionStorage.setItem("robot-rebound-session", JSON.stringify(next)); setSession(next); setError("");
   };
 
-  if (!snapshot) return <Landing connected={connected} error={error} onError={setError} onComplete={completeJoin} />;
-  return <Game snapshot={snapshot} connected={connected} error={error} onError={setError} />;
+  if (!snapshot) {
+    if (mode === "browser") return <Landing connected={connected} error={error} onError={setError} onComplete={completeJoin} />;
+    return <BootstrapScreen connected={connected} error={error} displayName={discordSession?.displayName} />;
+  }
+  return <Game snapshot={snapshot} connected={connected} error={error} onError={setError} isDiscord={mode === "discord"} />;
+}
+
+function BootstrapScreen({ connected, error, displayName }: { connected: boolean; error: string; displayName: string | undefined }) {
+  return <main className="landing">
+    <section className="hero"><p className="eyebrow">DISCORD ACTIVITY</p><h1>Robot<br />Rebound</h1><p>{displayName ? `Signed in as ${displayName}.` : "Starting the embedded session."}</p><span className={`connection ${connected ? "online" : ""}`}>{connected ? "Server connected" : "Connecting…"}</span></section>
+    <section className="entry-card"><h2>Preparing the room</h2><p>{error || "Authenticating with Discord and attaching to the activity instance."}</p></section>
+  </main>;
 }
 
 function Landing({ connected, error, onError, onComplete }: { connected: boolean; error: string; onError: (value: string) => void; onComplete: (name: string, result: CommandResult) => void }) {
@@ -70,7 +148,7 @@ function Landing({ connected, error, onError, onComplete }: { connected: boolean
   </main>;
 }
 
-function Game({ snapshot, connected, error, onError }: { snapshot: RoomSnapshot; connected: boolean; error: string; onError: (value: string) => void }) {
+function Game({ snapshot, connected, error, onError, isDiscord }: { snapshot: RoomSnapshot; connected: boolean; error: string; onError: (value: string) => void; isDiscord: boolean }) {
   const self = snapshot.players.find((player) => player.id === snapshot.selfId)!;
   const [selectedRobot, setSelectedRobot] = useState<RobotId | null>(null);
   const [bid, setBid] = useState("");
@@ -99,7 +177,7 @@ function Game({ snapshot, connected, error, onError }: { snapshot: RoomSnapshot;
   };
 
   return <main className={`game-shell ${(canPlace || canProve) ? "active-turn" : ""}`}>
-    <header><div><span className="mini-mark">RR</span><strong>Robot Rebound</strong></div><div className="room-code">Room <b>{snapshot.code}</b><button className="copy" onClick={() => navigator.clipboard.writeText(snapshot.code)}>Copy</button></div><span className={`connection ${connected ? "online" : ""}`}>{connected ? "Live" : "Reconnecting"}</span></header>
+    <header><div><span className="mini-mark">RR</span><strong>Robot Rebound</strong></div><div className="room-code">{isDiscord ? "Activity" : "Room"} <b>{snapshot.code}</b><button className="copy" onClick={() => navigator.clipboard.writeText(snapshot.code)}>Copy</button></div><span className={`connection ${connected ? "online" : ""}`}>{connected ? "Live" : "Reconnecting"}</span></header>
     <section className="status-bar"><div><p className="eyebrow">{snapshot.phase === "lobby" || snapshot.phase === "results" ? "MATCH" : `ROUND ${snapshot.round} / ${snapshot.roundCount}`}</p><h1>{title}</h1></div>{deadline && <div className="timer" aria-label={`${seconds} seconds remaining`}><b>{seconds}</b><span>seconds</span></div>}{unlimitedProof && <div className="timer unlimited" aria-label="Unlimited proof time"><b>∞</b><span>unlimited</span></div>}</section>
     <div className="game-grid">
       <Leaderboard snapshot={snapshot} />

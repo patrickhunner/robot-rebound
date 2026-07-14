@@ -43,6 +43,17 @@ describe("GameRoom", () => {
     expect(() => room.start(guest.id)).toThrow(/host/);
   });
 
+  it("reconnects Discord users by account id and resolves display-name collisions", () => {
+    const room = new GameRoom("ABC234", "Ada", 45, "socket-1", () => undefined);
+    const guest = room.join("Ada", "socket-2", undefined, "123456789012345678").player;
+    expect(guest.name).toMatch(/^Ada#/);
+    room.disconnect("socket-2");
+    const reconnected = room.join("Ada", "socket-3", undefined, "123456789012345678").player;
+    expect(reconnected.id).toBe(guest.id);
+    expect(reconnected.connected).toBe(true);
+    expect(reconnected.name).toBe(guest.name);
+  });
+
   it("can exclude the preceding room board during room creation", () => {
     const first = new GameRoom("ABC234", "Ada", 45, "socket-1", () => undefined, () => 0.99);
     const second = new GameRoom("DEF567", "Grace", 45, "socket-2", () => undefined, () => 0.99, 60, first.board.id);
