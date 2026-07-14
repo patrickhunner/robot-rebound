@@ -238,7 +238,7 @@ function LobbyPanel({ snapshot, selfId, command }: { snapshot: Extract<RoomSnaps
 
 function Leaderboard({ snapshot }: { snapshot: RoomSnapshot }) {
   const players = [...snapshot.players].sort((a, b) => b.wonTargets.length - a.wonTargets.length || a.name.localeCompare(b.name));
-  return <aside className="leaderboard"><h2>Leaderboard</h2>{players.map((player, index) => <div className={`leader ${player.id === snapshot.selfId ? "self" : ""}`} key={player.id}><div className="leader-name"><span className="rank">{index + 1}</span><span className={`presence ${player.connected ? "present" : ""}`} /><b>{player.name}{player.id === snapshot.selfId ? " (you)" : ""}</b><strong>{player.wonTargets.length}</strong></div><div className="won-tiles">{player.wonTargets.map((target, tileIndex) => <TargetTile key={`${target.id}-${tileIndex}`} target={target} />)}</div></div>)}</aside>;
+  return <aside className="leaderboard"><h2>Leaderboard</h2>{players.map((player, index) => <div className={`leader ${player.id === snapshot.selfId ? "self" : ""}`} key={player.id}><div className="leader-name"><span className="rank">{index + 1}</span><span className={`presence ${player.connected ? "present" : ""}`} /><b>{player.name}{player.id === snapshot.selfId ? " (you)" : ""}{player.isHost && <span className="host-badge">Host</span>}</b><strong>{player.wonTargets.length}</strong></div><div className="won-tiles">{player.wonTargets.map((target, tileIndex) => <TargetTile key={`${target.id}-${tileIndex}`} target={target} />)}</div></div>)}</aside>;
 }
 
 function TargetTile({ target }: { target: Target }) {

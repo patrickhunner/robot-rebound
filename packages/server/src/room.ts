@@ -76,15 +76,16 @@ export class GameRoom {
       returning.connected = true;
       returning.socketId = socketId;
       delete returning.disconnectedAt;
+      this.assignRandomConnectedHost();
       this.broadcast(this.code);
       return { player: returning, reconnected: true };
     }
     if (this.players.length >= 10) throw new Error("Room is full");
     const resolvedName = this.resolveName(name, undefined, discordUserId);
     if (!discordUserId && this.players.some((player) => player.name.toLocaleLowerCase() === resolvedName.toLocaleLowerCase())) throw new Error("That display name is already in use");
-    const eligible = this.phase.kind === "lobby";
-    const player = this.newPlayer(resolvedName, socketId, false, eligible, discordUserId);
+    const player = this.newPlayer(resolvedName, socketId, false, true, discordUserId);
     this.players.push(player);
+    this.assignRandomConnectedHost();
     if (this.phase.kind !== "lobby") this.placementOrder.push(player.id);
     this.broadcast(this.code);
     return { player, reconnected: false };
@@ -212,16 +213,20 @@ export class GameRoom {
   disconnect(socketId: string): void {
     const player = this.players.find((candidate) => candidate.socketId === socketId);
     if (!player) return;
+    const wasHost = player.isHost;
     player.connected = false;
     player.disconnectedAt = Date.now();
     delete player.socketId;
+    if (wasHost) {
+      player.isHost = false;
+      this.assignRandomConnectedHost();
+    }
     this.broadcast(this.code);
   }
 
   expireDisconnected(now = Date.now()): void {
     const expired = this.players.filter((player) => !player.connected && player.disconnectedAt !== undefined && now - player.disconnectedAt >= 120_000);
     for (const player of expired) {
-      const wasHost = player.isHost;
       player.isHost = false;
       if (this.phase.kind === "placement" && this.phase.placerId === player.id) {
         this.placementIndex = (this.placementIndex + 1) % Math.max(1, this.placementOrder.length);
@@ -230,11 +235,6 @@ export class GameRoom {
       if (this.phase.kind === "proving" && this.phase.deadline === null) {
         const active = this.orderedBids(this.phase.bids)[this.phase.bidIndex];
         if (active?.playerId === player.id) this.advanceProof();
-      }
-      if (wasHost) {
-        const replacement = this.placementOrder.map((id) => this.players.find((candidate) => candidate.id === id)).find((candidate) => candidate?.connected)
-          ?? this.players.find((candidate) => candidate.connected);
-        if (replacement) replacement.isHost = true;
       }
     }
     if (expired.length) this.broadcast(this.code);
@@ -337,6 +337,16 @@ export class GameRoom {
   }
   private requirePlayer(id: string): Player { const player = this.players.find((candidate) => candidate.id === id); if (!player) throw new Error("Player not found"); return player; }
   private requireHost(id: string): Player { const player = this.requirePlayer(id); if (!player.isHost) throw new Error("Only the host can do that"); return player; }
+  private assignRandomConnectedHost(): Player | undefined {
+    const current = this.players.find((player) => player.isHost && player.connected);
+    if (current) return current;
+    for (const player of this.players) player.isHost = false;
+    const candidates = this.players.filter((player) => player.connected);
+    if (!candidates.length) return undefined;
+    const selected = candidates[Math.floor(this.random() * candidates.length)]!;
+    selected.isHost = true;
+    return selected;
+  }
   private schedule(delay: number, action: () => void): void { this.clearTimer(); this.timer = setTimeout(action, delay); }
   private clearTimer(): void { if (this.timer) clearTimeout(this.timer); delete this.timer; }
   private resolveName(name: string, selfId?: string, discordUserId?: string): string {

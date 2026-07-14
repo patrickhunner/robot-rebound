@@ -495,6 +495,17 @@ header > div {
   font: 500 1rem ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
+.host-badge {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.1rem 0.3rem;
+  border: 1px solid var(--ink);
+  font: 600 0.55rem ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  vertical-align: 0.1rem;
+}
+
 .presence {
   width: 7px;
   height: 7px;

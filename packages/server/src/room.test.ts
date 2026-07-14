@@ -74,6 +74,29 @@ describe("GameRoom", () => {
     expect(snapshot.winners).toEqual([host.id]);
   });
 
+  it("randomly transfers host immediately on disconnect and preserves the former host", () => {
+    const room = new GameRoom("ABC234", "Creator", 45, "socket-1", () => undefined, () => 0.75);
+    const creator = room.players[0]!;
+    const firstGuest = room.join("First guest", "socket-2").player;
+    const secondGuest = room.join("Second guest", "socket-3").player;
+    expect(creator.isHost).toBe(true);
+
+    room.start(creator.id);
+    creator.score = 3;
+    room.disconnect("socket-1");
+
+    expect(creator).toMatchObject({ connected: false, isHost: false, score: 3 });
+    expect(firstGuest.isHost).toBe(false);
+    expect(secondGuest.isHost).toBe(true);
+    expect(room.snapshot(secondGuest.id).hostId).toBe(secondGuest.id);
+
+    const returning = room.join("Creator", "socket-4", creator.token).player;
+    expect(returning).toMatchObject({ id: creator.id, connected: true, isHost: false, score: 3 });
+    expect(() => room.endMatch(returning.id)).toThrow(/host/);
+    room.endMatch(secondGuest.id);
+    expect(room.snapshot(secondGuest.id).phase).toBe("results");
+  });
+
   it("lets the host repeatedly shuffle to a different board only in the lobby", () => {
     const room = new GameRoom("ABC234", "Host", 45, "socket-1", () => undefined, () => 0.99);
     const host = room.players[0]!;
@@ -129,6 +152,23 @@ describe("GameRoom", () => {
     expect(snapshot.phase).toBe("proving");
     if (snapshot.phase !== "proving") throw new Error("Expected proving");
     expect(snapshot.bidCount).toBe(7);
+  });
+
+  it("lets a player who joins during a round bid immediately", () => {
+    const room = new GameRoom("ABC234", "Host", 45, "socket-1", () => undefined, () => 0.25);
+    const host = room.players[0]!;
+    room.start(host.id);
+    if (room.phase.kind !== "placement") throw new Error("Expected placement");
+    room.confirmPlacement(room.phase.placerId);
+
+    const latePlayer = room.join("Late player", "socket-2").player;
+    expect(latePlayer.eligible).toBe(true);
+    room.bid(latePlayer.id, 8);
+
+    const snapshot = room.snapshot(latePlayer.id);
+    expect(snapshot.phase).toBe("bidding");
+    if (snapshot.phase !== "bidding") throw new Error("Expected bidding");
+    expect(snapshot.bids).toContainEqual(expect.objectContaining({ playerId: latePlayer.id, count: 8 }));
   });
 
   it("supports finite and unlimited proof durations", () => {
