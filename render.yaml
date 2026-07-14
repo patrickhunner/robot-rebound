@@ -3,7 +3,7 @@ services:
     name: robot-rebound
     runtime: node
     plan: free
-    buildCommand: corepack pnpm install --frozen-lockfile && corepack pnpm build
+    buildCommand: corepack pnpm install --frozen-lockfile --prod=false && corepack pnpm build
     startCommand: corepack pnpm start
     healthCheckPath: /health
     autoDeployTrigger: commit
