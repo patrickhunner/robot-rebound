@@ -35,7 +35,10 @@ export function findShortestSolutions(
     const search = (robots: RobotPositions, remaining: number, path: SolutionMove[]): boolean => {
       if (targetSatisfied(target, robots)) {
         if (remaining !== 0) return false;
-        const signature = path.map((move) => `${move.robot}:${move.direction}`).join("|");
+        // Strategies with the same moves are equivalent even when independent
+        // moves were demonstrated in a different order. Sorting only the
+        // identity preserves the representative path's playable display order.
+        const signature = path.map((move) => `${move.robot}:${move.direction}`).sort().join("|");
         if (!signatures.has(signature)) {
           signatures.add(signature);
           solutions.push([...path]);

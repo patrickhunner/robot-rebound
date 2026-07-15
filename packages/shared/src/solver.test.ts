@@ -22,10 +22,19 @@ describe("shortest solution search", () => {
     expect(result.solutions).toHaveLength(2);
   });
 
+  it("deduplicates permutations containing the same moves", () => {
+    const target: Target = { id: "red", position: { row: 2, col: 2 }, robot: "red", symbol: "circle" };
+    const result = findShortestSolutions(board, robots, target, 4, 5);
+    expect(result).toMatchObject({ moveCount: 3, capped: false });
+    expect(result.solutions).toHaveLength(2);
+    const identities = result.solutions.map((solution) => solution.map((move) => `${move.robot}:${move.direction}`).sort().join("|"));
+    expect(new Set(identities).size).toBe(result.solutions.length);
+  });
+
   it("stops after the configured number of shortest strategies", () => {
-    const target: Target = { id: "blue", position: { row: 1, col: 1 }, robot: "blue", symbol: "square" };
+    const target: Target = { id: "red", position: { row: 3, col: 3 }, robot: "red", symbol: "square" };
     const result = findShortestSolutions(board, robots, target, 6, 5);
-    expect(result).toMatchObject({ moveCount: 4, capped: true });
+    expect(result).toMatchObject({ moveCount: 5, capped: true });
     expect(result.solutions).toHaveLength(5);
   });
 
