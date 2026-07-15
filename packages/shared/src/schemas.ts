@@ -24,3 +24,11 @@ export const placeRobotSchema = roomCommandSchema.extend({
 export const bidSchema = roomCommandSchema.extend({ count: z.number().int().min(1).max(999) });
 export const moveSchema = roomCommandSchema.extend({ robot: z.enum(["red", "blue", "green", "yellow", "silver"]), direction: z.enum(["north", "east", "south", "west"]) });
 export const reviewSelectSchema = roomCommandSchema.extend({ robot: z.enum(["red", "blue", "green", "yellow", "silver"]).nullable() });
+export const animationSpeedSchema = z.number().int().min(1).max(10);
+export const animationSpeedCommandSchema = roomCommandSchema.extend({ speed: animationSpeedSchema });
+export const reviewPlaybackSchema = roomCommandSchema.extend({
+  moves: z.array(z.object({
+    robot: z.enum(["red", "blue", "green", "yellow", "silver"]),
+    direction: z.enum(["north", "east", "south", "west"])
+  })).min(1).max(999)
+});

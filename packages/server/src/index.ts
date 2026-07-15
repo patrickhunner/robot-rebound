@@ -6,8 +6,8 @@ import express from "express";
 import { createServer } from "node:http";
 import { Server } from "socket.io";
 import {
-  bidSchema, createRoomSchema, discordTokenExchangeSchema, joinRoomSchema, lobbySettingsSchema, moveSchema, placeRobotSchema, reviewSelectSchema, roomCommandSchema,
-  type CommandResult
+  animationSpeedCommandSchema, bidSchema, createRoomSchema, discordTokenExchangeSchema, joinRoomSchema, lobbySettingsSchema, moveSchema, placeRobotSchema, reviewPlaybackSchema, reviewSelectSchema, roomCommandSchema,
+  type AnimationSpeed, type CommandResult
 } from "@robot-rebound/shared";
 import { exchangeDiscordCode, type DiscordJoinTicket } from "./discord.js";
 import { createRoomCode, GameRoom } from "./room.js";
@@ -167,7 +167,9 @@ io.on("connection", (socket) => {
   command("review:select", reviewSelectSchema, (room, playerId, input) => room.selectReviewRobot(playerId, input.robot));
   command("review:move", moveSchema, (room, playerId, input) => room.moveReviewRobot(playerId, input.robot, input.direction));
   command("review:reset", roomCommandSchema, (room, playerId) => room.resetReview(playerId));
+  command("review:play", reviewPlaybackSchema, (room, playerId, input) => room.playReviewStrategy(playerId, input.moves));
   command("review:advance", roomCommandSchema, (room, playerId) => room.advanceReview(playerId));
+  command("room:animation-speed", animationSpeedCommandSchema, (room, playerId, input) => room.updateAnimationSpeed(playerId, input.speed as AnimationSpeed));
   command("match:end", roomCommandSchema, (room, playerId) => room.endMatch(playerId));
   command("match:lobby", roomCommandSchema, (room, playerId) => room.returnToLobby(playerId));
 

@@ -7,6 +7,8 @@ export const biddingSecondsOptions = [0, 15, 30, 45, 60] as const;
 export type BiddingSeconds = (typeof biddingSecondsOptions)[number];
 export const proofSecondsOptions = [15, 30, 45, 60, "unlimited"] as const;
 export type ProofSeconds = (typeof proofSecondsOptions)[number];
+export const animationSpeedOptions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+export type AnimationSpeed = (typeof animationSpeedOptions)[number];
 
 export interface Position { row: number; col: number }
 export type RobotPositions = Record<RobotId, Position>;
@@ -48,6 +50,7 @@ export interface BaseRoomView {
   biddingSeconds: BiddingSeconds;
   proofSeconds: ProofSeconds;
   roundCount: number;
+  animationSpeed: AnimationSpeed;
   board: BoardDefinition;
 }
 export type RoomSnapshot = BaseRoomView & (
@@ -56,7 +59,7 @@ export type RoomSnapshot = BaseRoomView & (
   | { phase: "solving"; round: number; robots: RobotPositions; target: Target }
   | { phase: "bidding"; round: number; robots: RobotPositions; target: Target; bids: BidView[]; deadline: number }
   | { phase: "proving"; round: number; robots: RobotPositions; target: Target; bids: BidView[]; activeBidderId: string; bidCount: number; moveCount: number; deadline: number | null }
-  | { phase: "review"; round: number; startRobots: RobotPositions; robots: RobotPositions; target: Target; winnerId: string; winningMoveCount: number; moveCount: number; locks: RobotLocks }
+  | { phase: "review"; round: number; startRobots: RobotPositions; robots: RobotPositions; target: Target; winnerId: string; winningMoveCount: number; moveCount: number; locks: RobotLocks; playbackActive: boolean }
   | { phase: "results"; winners: string[] }
 );
 

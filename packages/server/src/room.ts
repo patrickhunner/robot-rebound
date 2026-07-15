@@ -1,8 +1,8 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import {
-  createRandomBoard, moveRobot, randomRobotPositions, targetSatisfied, validatePlacement,
-  type BidView, type BiddingSeconds, type BoardDefinition, type Direction, type PlayerView, type Position, type ProofSeconds, type RobotId,
-  type RobotLocks, type RobotPositions, type RoomSnapshot, type Target
+  animationDurationMs, createRandomBoard, moveRobot, randomRobotPositions, targetSatisfied, validatePlacement,
+  type AnimationSpeed, type BidView, type BiddingSeconds, type BoardDefinition, type Direction, type PlayerView, type Position, type ProofSeconds, type RobotId,
+  type RobotLocks, type RobotPositions, type RoomSnapshot, type SolutionMove, type Target
 } from "@robot-rebound/shared";
 
 interface Player {
@@ -18,7 +18,7 @@ type Phase =
   | { kind: "solving"; round: number; robots: RobotPositions; target: Target }
   | { kind: "bidding"; round: number; robots: RobotPositions; target: Target; bids: Bid[]; deadline: number }
   | { kind: "proving"; round: number; startRobots: RobotPositions; robots: RobotPositions; target: Target; bids: Bid[]; bidIndex: number; moveCount: number; deadline: number | null }
-  | { kind: "review"; round: number; startRobots: RobotPositions; robots: RobotPositions; target: Target; winnerId: string; winningMoveCount: number; moveCount: number; locks: RobotLocks }
+  | { kind: "review"; round: number; startRobots: RobotPositions; robots: RobotPositions; target: Target; winnerId: string; winningMoveCount: number; moveCount: number; locks: RobotLocks; playback?: { moves: SolutionMove[]; index: number } }
   | { kind: "results"; winners: string[] };
 
 export type Broadcast = (code: string) => void;
@@ -38,6 +38,7 @@ export class GameRoom {
   biddingSeconds: BiddingSeconds;
   proofSeconds: ProofSeconds;
   roundCount = 17;
+  animationSpeed: AnimationSpeed = 5;
   phase: Phase = { kind: "lobby" };
   placementOrder: string[] = [];
   targetDeck: Target[] = [];
@@ -119,6 +120,15 @@ export class GameRoom {
     this.broadcast(this.code);
   }
 
+  updateAnimationSpeed(playerId: string, speed: AnimationSpeed): void {
+    this.requireHost(playerId);
+    this.animationSpeed = speed;
+    if (this.phase.kind === "review" && this.phase.playback) {
+      this.schedule(animationDurationMs(speed), () => this.advancePlayback());
+    }
+    this.broadcast(this.code);
+  }
+
   place(playerId: string, robot: RobotId, position: Position): void {
     if (this.phase.kind !== "placement") throw new Error("Robots cannot be placed right now");
     if (this.phase.placerId !== playerId) throw new Error("Only the designated placer can move robots");
@@ -195,6 +205,7 @@ export class GameRoom {
 
   selectReviewRobot(playerId: string, robot: RobotId | null): void {
     if (this.phase.kind !== "review") throw new Error("The round is not being reviewed");
+    if (this.phase.playback) throw new Error("A strategy is currently playing");
     this.requireConnectedPlayer(playerId);
     if (robot) {
       const owner = this.phase.locks[robot];
@@ -209,6 +220,7 @@ export class GameRoom {
 
   moveReviewRobot(playerId: string, robot: RobotId, direction: Direction): void {
     if (this.phase.kind !== "review") throw new Error("The round is not being reviewed");
+    if (this.phase.playback) throw new Error("A strategy is currently playing");
     this.requireConnectedPlayer(playerId);
     if (this.phase.locks[robot] !== playerId) throw new Error("Select that robot before moving it");
     const destination = moveRobot(this.board, this.phase.robots, robot, direction);
@@ -220,6 +232,7 @@ export class GameRoom {
 
   resetReview(playerId: string): void {
     if (this.phase.kind !== "review") throw new Error("The round is not being reviewed");
+    if (this.phase.playback) throw new Error("A strategy is currently playing");
     this.requireConnectedPlayer(playerId);
     this.phase.robots = copyRobots(this.phase.startRobots);
     this.phase.moveCount = 0;
@@ -227,9 +240,30 @@ export class GameRoom {
     this.broadcast(this.code);
   }
 
+  playReviewStrategy(playerId: string, moves: SolutionMove[]): void {
+    if (this.phase.kind !== "review") throw new Error("The round is not being reviewed");
+    this.requireConnectedPlayer(playerId);
+    if (this.phase.playback) throw new Error("A strategy is already playing");
+    if (moves.length > this.phase.winningMoveCount) throw new Error("That strategy exceeds the accepted proof count");
+    let simulated = copyRobots(this.phase.startRobots);
+    for (const move of moves) {
+      const destination = moveRobot(this.board, simulated, move.robot, move.direction);
+      if (!destination) throw new Error("That strategy contains an illegal move");
+      simulated = { ...simulated, [move.robot]: destination };
+    }
+    if (!targetSatisfied(this.phase.target, simulated)) throw new Error("That strategy does not solve the target");
+    this.phase.robots = copyRobots(this.phase.startRobots);
+    this.phase.moveCount = 0;
+    this.phase.locks = {};
+    this.phase.playback = { moves: structuredClone(moves), index: 0 };
+    this.broadcast(this.code);
+    this.schedule(animationDurationMs(this.animationSpeed), () => this.advancePlayback());
+  }
+
   advanceReview(playerId: string): void {
     this.requireHost(playerId);
     if (this.phase.kind !== "review") throw new Error("The round is not being reviewed");
+    this.clearTimer();
     const nextStartingPositions = copyRobots(this.phase.startRobots);
     const nextRound = this.phase.round + 1;
     if (!this.targetDeck.length) {
@@ -303,14 +337,14 @@ export class GameRoom {
     const base = {
       code: this.code, selfId, hostId: this.players.find((player) => player.isHost)?.id ?? "",
       players: this.players.map<PlayerView>((player) => ({ id: player.id, name: player.name, score: player.score, connected: player.connected, isHost: player.isHost, eligible: player.eligible, wonTargets: player.wonTargets })),
-      biddingSeconds: this.biddingSeconds, proofSeconds: this.proofSeconds, roundCount: this.roundCount, board: this.board
+      biddingSeconds: this.biddingSeconds, proofSeconds: this.proofSeconds, roundCount: this.roundCount, animationSpeed: this.animationSpeed, board: this.board
     };
     const phase = this.phase;
     if (phase.kind === "lobby") return { ...base, phase: "lobby" };
     if (phase.kind === "placement") return { ...base, phase: "placement", round: phase.round, placerId: phase.placerId, robots: phase.robots };
     if (phase.kind === "solving") return { ...base, phase: "solving", round: phase.round, robots: phase.robots, target: phase.target };
     if (phase.kind === "bidding") return { ...base, phase: "bidding", round: phase.round, robots: phase.robots, target: phase.target, bids: phase.bids, deadline: phase.deadline };
-    if (phase.kind === "review") return { ...base, phase: "review", round: phase.round, startRobots: phase.startRobots, robots: phase.robots, target: phase.target, winnerId: phase.winnerId, winningMoveCount: phase.winningMoveCount, moveCount: phase.moveCount, locks: phase.locks };
+    if (phase.kind === "review") return { ...base, phase: "review", round: phase.round, startRobots: phase.startRobots, robots: phase.robots, target: phase.target, winnerId: phase.winnerId, winningMoveCount: phase.winningMoveCount, moveCount: phase.moveCount, locks: phase.locks, playbackActive: Boolean(phase.playback) };
     if (phase.kind === "results") return { ...base, phase: "results", winners: phase.winners };
     const active = this.orderedBids(phase.bids)[phase.bidIndex]!;
     return { ...base, phase: "proving", round: phase.round, robots: phase.robots, target: phase.target, bids: phase.bids, activeBidderId: active.playerId, bidCount: active.count, moveCount: phase.moveCount, deadline: phase.deadline };
@@ -375,6 +409,28 @@ export class GameRoom {
     this.targetDeck.shift();
     this.phase = { kind: "review", round, startRobots, robots: copyRobots(startRobots), target, winnerId: playerId, winningMoveCount, moveCount: 0, locks: {} };
     this.broadcast(this.code);
+  }
+
+  private advancePlayback(): void {
+    if (this.phase.kind !== "review" || !this.phase.playback) return;
+    const move = this.phase.playback.moves[this.phase.playback.index];
+    if (!move) {
+      delete this.phase.playback;
+      this.broadcast(this.code);
+      return;
+    }
+    const destination = moveRobot(this.board, this.phase.robots, move.robot, move.direction);
+    if (!destination) {
+      delete this.phase.playback;
+      this.broadcast(this.code);
+      return;
+    }
+    this.phase.robots = { ...this.phase.robots, [move.robot]: destination };
+    this.phase.moveCount++;
+    this.phase.playback.index++;
+    if (this.phase.playback.index >= this.phase.playback.moves.length) delete this.phase.playback;
+    this.broadcast(this.code);
+    if (this.phase.playback) this.schedule(animationDurationMs(this.animationSpeed), () => this.advancePlayback());
   }
 
   private orderedBids(bids: Bid[]): Bid[] { return [...bids].sort((a, b) => a.count - b.count || a.order - b.order); }

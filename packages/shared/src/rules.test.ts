@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { assembleBoard, classicBoard, createRandomBoard, quadrants } from "./board.js";
-import { legalMoves, moveRobot, randomRobotPositions, targetSatisfied, validatePlacement } from "./rules.js";
+import { animationDurationMs, legalMoves, moveRobot, randomRobotPositions, targetSatisfied, validatePlacement } from "./rules.js";
 import type { RobotPositions } from "./types.js";
 
 const robots: RobotPositions = {
@@ -9,6 +9,11 @@ const robots: RobotPositions = {
 };
 
 describe("movement", () => {
+  it("maps piece speed 1 through 10 to 1000 through 100 milliseconds", () => {
+    expect(animationDurationMs(1)).toBe(1000);
+    expect(animationDurationMs(5)).toBe(600);
+    expect(animationDurationMs(10)).toBe(100);
+  });
   it("slides until another robot", () => expect(moveRobot(classicBoard, robots, "red", "east")).toEqual({ row: 0, col: 4 }));
   it("rejects a direction with no travel", () => expect(moveRobot(classicBoard, robots, "red", "north")).toBeNull());
   it("returns only the legal landing cells", () => {

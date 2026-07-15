@@ -266,6 +266,7 @@ header > div {
   border: 5px solid var(--ink);
   background: #f9f7ee;
   box-shadow: 10px 10px 0 #d5d2c5;
+  position: relative;
 }
 
 .cell {
@@ -359,6 +360,32 @@ header > div {
   font: 800 clamp(0.55rem, 1.2vw, 1rem) ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   box-shadow: inset 0 -4px 0 #0003, 0 2px 4px #0004;
   z-index: 2;
+}
+
+.board-robot {
+  position: absolute;
+  z-index: 3;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  opacity: 1;
+  cursor: default;
+  transition-property: left, top;
+  transition-duration: var(--robot-slide-ms);
+  transition-timing-function: linear;
+}
+
+.board-robot.clickable {
+  cursor: pointer;
+}
+
+.board-robot:hover {
+  transform: none;
+}
+
+.board-robot:disabled {
+  opacity: 1;
 }
 
 .robot-red {
@@ -648,12 +675,31 @@ header > div {
 .solution-heading,
 .solution-row {
   display: grid;
-  grid-template-columns: 3.5rem 1fr;
+  grid-template-columns: 3.5rem 1fr 2rem;
   gap: 0.6rem;
   align-items: start;
   padding: 0.45rem 0;
   border-top: 1px solid var(--line);
   font-size: 0.78rem;
+}
+
+.strategy-play {
+  align-self: center;
+  width: 1.8rem;
+  height: 1.8rem;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 0.7rem;
+}
+
+.speed-control label {
+  display: grid;
+  gap: 0.55rem;
+  font: 0.75rem ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.speed-control input {
+  width: 100%;
 }
 
 .solution-arrows {
@@ -719,6 +765,10 @@ header > div {
   .waiting-action,
   .active-target .destination {
     animation: none;
+  }
+
+  .board-robot {
+    transition: none;
   }
 }
 

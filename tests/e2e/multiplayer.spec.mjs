@@ -12,6 +12,7 @@ test("two isolated players create, join, and start a match", async ({ browser })
   await expect(host.getByText(/Room [A-Z2-9]{6}/)).toBeVisible();
   await expect(host.getByLabel("Bidding window")).toHaveValue("30");
   await expect(host.getByLabel("Proof time")).toHaveValue("unlimited");
+  await expect(host.getByLabel("Piece speed")).toHaveValue("5");
   const roomText = await host.locator(".room-code b").textContent();
   expect(roomText).toMatch(/^[A-Z2-9]{6}$/);
   const readDestinations = () => host.locator(".destination").evaluateAll((items) => items.map((item) => `${item.getAttribute("title")}@${item.parentElement?.getAttribute("aria-label")}`));
@@ -62,7 +63,10 @@ test("two isolated players create, join, and start a match", async ({ browser })
   await host.keyboard.press("Space");
   await expect(host.locator(".selected-robot")).toHaveCount(0);
   const proofRobot = host.locator(".robot").first();
-  const startLabel = await proofRobot.locator("xpath=..").getAttribute("aria-label");
+  await expect(proofRobot.locator("xpath=..")).toHaveCSS("transition-duration", "0.6s");
+  const robotTitle = await proofRobot.getAttribute("title");
+  const robotName = robotTitle?.split(" ")[0];
+  const startLabel = await host.getByRole("gridcell", { name: new RegExp(`${robotName} robot`) }).getAttribute("aria-label");
   await proofRobot.click();
   const destinationLabel = await host.locator(".legal-destination").first().getAttribute("aria-label");
   const coordinates = (label) => label?.match(/row (\d+), column (\d+)/)?.slice(1).map(Number);

@@ -1,4 +1,9 @@
 import { directions, robotIds, type BoardDefinition, type Direction, type Position, type RobotId, type RobotPositions, type Target } from "./types.js";
+import type { AnimationSpeed } from "./types.js";
+
+export function animationDurationMs(speed: AnimationSpeed): number {
+  return 1100 - speed * 100;
+}
 
 const delta: Record<Direction, Position> = {
   north: { row: -1, col: 0 }, east: { row: 0, col: 1 }, south: { row: 1, col: 0 }, west: { row: 0, col: -1 }

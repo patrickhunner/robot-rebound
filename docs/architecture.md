@@ -18,6 +18,8 @@ Finite timers store absolute server deadlines. Browsers display their own countd
 
 After a successful proof, the server enters a review phase instead of advancing immediately. It owns the shared review positions, move counter, and per-robot player locks. Review resets restore the round's revealed positions, and review movement never changes scoring or the next round's starting positions.
 
+The host may change the room's 1–10 robot animation speed in any phase. During shared strategy playback, the server validates the submitted solution against the round-start positions, resets the review board, blocks manual review interactions, and broadcasts one authoritative move at a time using that speed.
+
 Random placement is generated and validated by the server. The client uses the shared movement engine only to preview legal proof endpoints; clicking one still sends a directional command that the server independently recalculates.
 
 Optimal strategies are derived from the immutable round-start snapshot in a browser Web Worker. The pure shared solver searches only as deep as the accepted proof, returns at most five proven shortest sequences, and has no authority over room state.

@@ -246,4 +246,65 @@ describe("GameRoom", () => {
     room.disconnect("socket-1");
     expect(room.snapshot(guest.id)).toMatchObject({ phase: "review", locks: {} });
   });
+
+  it("lets only the host change the room-wide animation speed in any phase", () => {
+    const room = new GameRoom("ABC234", "Host", 30, "socket-1", () => undefined, () => 0.25);
+    const host = room.players[0]!;
+    const guest = room.join("Guest", "socket-2").player;
+    expect(room.snapshot(host.id).animationSpeed).toBe(5);
+    expect(() => room.updateAnimationSpeed(guest.id, 8)).toThrow(/host/);
+    room.updateAnimationSpeed(host.id, 8);
+    expect(room.snapshot(guest.id).animationSpeed).toBe(8);
+    room.start(host.id);
+    room.updateAnimationSpeed(host.id, 10);
+    expect(room.snapshot(host.id).animationSpeed).toBe(10);
+  });
+
+  it("runs validated review strategies at the current shared speed and locks interactions", () => {
+    const room = new GameRoom("ABC234", "Host", 30, "socket-1", () => undefined, () => 0.25);
+    const host = room.players[0]!;
+    const guest = room.join("Guest", "socket-2").player;
+    room.board = classicBoard;
+    const target = classicBoard.targets.find((candidate) => candidate.robot !== "wild")!;
+    if (target.robot === "wild") throw new Error("Expected colored target");
+    const starting = { ...randomRobotPositions(classicBoard, () => 0.25), [target.robot]: target.position };
+    const movable = (["red", "blue", "green", "yellow", "silver"] as const).filter((robot) => robot !== target.robot);
+    const firstRobot = movable.find((robot) => legalMoves(classicBoard, starting, robot).length)!;
+    const first = { robot: firstRobot, direction: legalMoves(classicBoard, starting, firstRobot)[0]!.direction };
+    const afterFirst = { ...starting, [firstRobot]: legalMoves(classicBoard, starting, firstRobot)[0]!.destination };
+    const secondRobot = movable.find((robot) => legalMoves(classicBoard, afterFirst, robot).length)!;
+    const second = { robot: secondRobot, direction: legalMoves(classicBoard, afterFirst, secondRobot)[0]!.direction };
+    room.phase = { kind: "review", round: 1, startRobots: structuredClone(starting), robots: structuredClone(afterFirst), target, winnerId: host.id, winningMoveCount: 2, moveCount: 1, locks: { red: host.id } };
+
+    room.playReviewStrategy(guest.id, [first, second]);
+    expect(room.snapshot(host.id)).toMatchObject({ phase: "review", robots: starting, moveCount: 0, locks: {}, playbackActive: true });
+    expect(() => room.resetReview(host.id)).toThrow(/currently playing/);
+    expect(() => room.selectReviewRobot(guest.id, "blue")).toThrow(/currently playing/);
+    vi.advanceTimersByTime(600);
+    expect(room.snapshot(host.id)).toMatchObject({ phase: "review", moveCount: 1, playbackActive: true });
+    room.updateAnimationSpeed(host.id, 10);
+    vi.advanceTimersByTime(99);
+    expect(room.snapshot(host.id)).toMatchObject({ phase: "review", moveCount: 1 });
+    vi.advanceTimersByTime(1);
+    expect(room.snapshot(host.id)).toMatchObject({ phase: "review", moveCount: 2, playbackActive: false });
+  });
+
+  it("rejects invalid playback and cancels pending playback when the host ends the match", () => {
+    const room = new GameRoom("ABC234", "Host", 30, "socket-1", () => undefined, () => 0.25);
+    const host = room.players[0]!;
+    room.board = classicBoard;
+    const target = classicBoard.targets[0]!;
+    const starting = randomRobotPositions(classicBoard, () => 0.25);
+    room.phase = { kind: "review", round: 1, startRobots: structuredClone(starting), robots: structuredClone(starting), target, winnerId: host.id, winningMoveCount: 2, moveCount: 0, locks: {} };
+    expect(() => room.playReviewStrategy(host.id, [{ robot: "red", direction: "north" }])).toThrow(/illegal move|does not solve/);
+
+    const solved = { ...starting, red: target.position };
+    const mover = (["blue", "green", "yellow", "silver"] as const).find((robot) => legalMoves(classicBoard, solved, robot).length)!;
+    const move = legalMoves(classicBoard, solved, mover)[0]!;
+    room.phase = { kind: "review", round: 1, startRobots: structuredClone(solved), robots: structuredClone(solved), target: { ...target, robot: "red" }, winnerId: host.id, winningMoveCount: 1, moveCount: 0, locks: {} };
+    room.playReviewStrategy(host.id, [{ robot: mover, direction: move.direction }]);
+    room.endMatch(host.id);
+    vi.advanceTimersByTime(5_000);
+    expect(room.snapshot(host.id).phase).toBe("results");
+  });
 });
