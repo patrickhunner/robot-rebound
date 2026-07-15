@@ -2,4 +2,4 @@
 
 ## Submitted For Review (move new features here once completed)
 
-1. **Deduplicate reordered optimal strategies** — Optimal paths containing the same robot/direction moves with the same multiplicities are displayed once, even when those moves can be performed in a different order. The retained representative remains in playable order.
+1. **Add keyboard robot selection** — During proofs and shared review, R, B, G, Y, and S select the corresponding robot and Space deselects it. Shortcuts are case-insensitive, preserve normal form input, and continue to respect shared robot locks.

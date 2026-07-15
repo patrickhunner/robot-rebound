@@ -57,6 +57,10 @@ test("two isolated players create, join, and start a match", async ({ browser })
   await expect(host.locator(".proof-status>strong")).toContainText("0 / 5");
   await expect(host.getByRole("button", { name: "Reset proof" })).toBeVisible();
   await expect(host.locator(".game-shell")).toHaveClass(/active-turn/);
+  await host.keyboard.press("r");
+  await expect(host.locator(".robot-red")).toHaveClass(/selected-robot/);
+  await host.keyboard.press("Space");
+  await expect(host.locator(".selected-robot")).toHaveCount(0);
   const proofRobot = host.locator(".robot").first();
   const startLabel = await proofRobot.locator("xpath=..").getAttribute("aria-label");
   await proofRobot.click();

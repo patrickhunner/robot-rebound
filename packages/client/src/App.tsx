@@ -184,10 +184,24 @@ function Game({ snapshot, connected, error, onError, isDiscord }: { snapshot: Ro
     else setSelectedRobot(robot);
   };
   useEffect(() => {
-    if (!(canProve || canReview) || !activeSelected) return;
+    if (!(canProve || canReview)) return;
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (target?.matches("input, select, textarea, [contenteditable='true']") || event.altKey || event.ctrlKey || event.metaKey) return;
+      const robot = ({ r: "red", b: "blue", g: "green", y: "yellow", s: "silver" } as Partial<Record<string, RobotId>>)[event.key.toLowerCase()];
+      if (robot) {
+        event.preventDefault();
+        if (canReview) command("review:select", { robot: reviewSelected === robot ? null : robot });
+        else setSelectedRobot(robot);
+        return;
+      }
+      if (event.code === "Space") {
+        event.preventDefault();
+        if (canReview) command("review:select", { robot: null });
+        else setSelectedRobot(null);
+        return;
+      }
+      if (!activeSelected) return;
       const direction = ({ ArrowUp: "north", ArrowRight: "east", ArrowDown: "south", ArrowLeft: "west" } as Partial<Record<string, Direction>>)[event.key];
       if (!direction || !activeMoves.some((move) => move.direction === direction)) return;
       event.preventDefault();
@@ -195,7 +209,7 @@ function Game({ snapshot, connected, error, onError, isDiscord }: { snapshot: Ro
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [canProve, canReview, activeSelected, activeMoves, snapshot.code]);
+  }, [canProve, canReview, activeSelected, activeMoves, reviewSelected, snapshot.code]);
   const lockedRobots = snapshot.phase === "review" ? Object.fromEntries(Object.entries(snapshot.locks).flatMap(([robot, owner]) => owner !== self.id ? [[robot, snapshot.players.find((player) => player.id === owner)?.name ?? "another player"]] : [])) as Partial<Record<RobotId, string>> : {};
   const endMatch = () => {
     if (window.confirm("End this match now and use the current scores?")) command("match:end");
