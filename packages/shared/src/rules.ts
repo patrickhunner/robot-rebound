@@ -5,6 +5,11 @@ export function animationDurationMs(speed: AnimationSpeed): number {
   return 1100 - speed * 100;
 }
 
+export function movementDurationMs(speed: AnimationSpeed, distance: number, boardSize = 16): number {
+  if (distance <= 0) return 0;
+  return Math.round(animationDurationMs(speed) * distance / Math.max(1, boardSize - 1));
+}
+
 const delta: Record<Direction, Position> = {
   north: { row: -1, col: 0 }, east: { row: 0, col: 1 }, south: { row: 1, col: 0 }, west: { row: 0, col: -1 }
 };

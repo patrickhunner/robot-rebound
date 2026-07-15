@@ -1,4 +1,3 @@
-
 # Privacy Policy
 
 Last updated: July 11, 2026
@@ -24,7 +23,7 @@ This information is used only to:
 - display player names and avatars
 - synchronize multiplayer sessions
 
-## Data Storage
+## Data Storagek
 
 Game state is stored only as long as necessary to operate the current game session.
 

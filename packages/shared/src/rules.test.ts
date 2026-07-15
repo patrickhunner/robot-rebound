@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { assembleBoard, classicBoard, createRandomBoard, quadrants } from "./board.js";
-import { animationDurationMs, legalMoves, moveRobot, randomRobotPositions, targetSatisfied, validatePlacement } from "./rules.js";
+import { animationDurationMs, legalMoves, moveRobot, movementDurationMs, randomRobotPositions, targetSatisfied, validatePlacement } from "./rules.js";
 import type { RobotPositions } from "./types.js";
 
 const robots: RobotPositions = {
@@ -13,6 +13,12 @@ describe("movement", () => {
     expect(animationDurationMs(1)).toBe(1000);
     expect(animationDurationMs(5)).toBe(600);
     expect(animationDurationMs(10)).toBe(100);
+  });
+  it("keeps travel speed constant by scaling duration with distance", () => {
+    expect(movementDurationMs(5, 15)).toBe(600);
+    expect(movementDurationMs(5, 5)).toBe(200);
+    expect(movementDurationMs(5, 1)).toBe(40);
+    expect(movementDurationMs(5, 0)).toBe(0);
   });
   it("slides until another robot", () => expect(moveRobot(classicBoard, robots, "red", "east")).toEqual({ row: 0, col: 4 }));
   it("rejects a direction with no travel", () => expect(moveRobot(classicBoard, robots, "red", "north")).toBeNull());

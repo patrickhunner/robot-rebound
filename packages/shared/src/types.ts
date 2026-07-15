@@ -58,7 +58,7 @@ export type RoomSnapshot = BaseRoomView & (
   | { phase: "placement"; round: number; placerId: string; robots: RobotPositions }
   | { phase: "solving"; round: number; robots: RobotPositions; target: Target }
   | { phase: "bidding"; round: number; robots: RobotPositions; target: Target; bids: BidView[]; deadline: number }
-  | { phase: "proving"; round: number; robots: RobotPositions; target: Target; bids: BidView[]; activeBidderId: string; bidCount: number; moveCount: number; deadline: number | null }
+  | { phase: "proving"; round: number; startRobots: RobotPositions; robots: RobotPositions; target: Target; bids: BidView[]; activeBidderId: string; bidCount: number; moveCount: number; deadline: number | null }
   | { phase: "review"; round: number; startRobots: RobotPositions; robots: RobotPositions; target: Target; winnerId: string; winningMoveCount: number; moveCount: number; locks: RobotLocks; playbackActive: boolean }
   | { phase: "results"; winners: string[] }
 );

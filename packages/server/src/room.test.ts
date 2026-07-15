@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { classicBoard, legalMoves, randomRobotPositions } from "@robot-rebound/shared";
+import { classicBoard, legalMoves, movementDurationMs, randomRobotPositions } from "@robot-rebound/shared";
 import { GameRoom } from "./room.js";
 
 describe("GameRoom", () => {
@@ -218,7 +218,7 @@ describe("GameRoom", () => {
     const snapshot = room.snapshot(player.id);
     expect(snapshot.phase).toBe("review");
     if (snapshot.phase !== "review") throw new Error("Expected review");
-    expect(snapshot).toMatchObject({ robots: starting, startRobots: starting, moveCount: 0, winningMoveCount: 1, winnerId: player.id });
+    expect(snapshot).toMatchObject({ robots: { ...starting, [mover]: move.destination }, startRobots: starting, moveCount: 1, winningMoveCount: 1, winnerId: player.id });
     room.advanceReview(player.id);
     const placement = room.snapshot(player.id);
     expect(placement.phase).toBe("placement");
@@ -270,22 +270,29 @@ describe("GameRoom", () => {
     const starting = { ...randomRobotPositions(classicBoard, () => 0.25), [target.robot]: target.position };
     const movable = (["red", "blue", "green", "yellow", "silver"] as const).filter((robot) => robot !== target.robot);
     const firstRobot = movable.find((robot) => legalMoves(classicBoard, starting, robot).length)!;
-    const first = { robot: firstRobot, direction: legalMoves(classicBoard, starting, firstRobot)[0]!.direction };
-    const afterFirst = { ...starting, [firstRobot]: legalMoves(classicBoard, starting, firstRobot)[0]!.destination };
+    const firstLegalMove = legalMoves(classicBoard, starting, firstRobot)[0]!;
+    const first = { robot: firstRobot, direction: firstLegalMove.direction };
+    const afterFirst = { ...starting, [firstRobot]: firstLegalMove.destination };
     const secondRobot = movable.find((robot) => legalMoves(classicBoard, afterFirst, robot).length)!;
-    const second = { robot: secondRobot, direction: legalMoves(classicBoard, afterFirst, secondRobot)[0]!.direction };
+    const secondLegalMove = legalMoves(classicBoard, afterFirst, secondRobot)[0]!;
+    const second = { robot: secondRobot, direction: secondLegalMove.direction };
+    const firstDistance = Math.abs(starting[firstRobot].row - firstLegalMove.destination.row) + Math.abs(starting[firstRobot].col - firstLegalMove.destination.col);
+    const secondDistance = Math.abs(afterFirst[secondRobot].row - secondLegalMove.destination.row) + Math.abs(afterFirst[secondRobot].col - secondLegalMove.destination.col);
     room.phase = { kind: "review", round: 1, startRobots: structuredClone(starting), robots: structuredClone(afterFirst), target, winnerId: host.id, winningMoveCount: 2, moveCount: 1, locks: { red: host.id } };
 
     room.playReviewStrategy(guest.id, [first, second]);
     expect(room.snapshot(host.id)).toMatchObject({ phase: "review", robots: starting, moveCount: 0, locks: {}, playbackActive: true });
     expect(() => room.resetReview(host.id)).toThrow(/currently playing/);
     expect(() => room.selectReviewRobot(guest.id, "blue")).toThrow(/currently playing/);
-    vi.advanceTimersByTime(600);
+    vi.advanceTimersByTime(movementDurationMs(5, firstDistance));
     expect(room.snapshot(host.id)).toMatchObject({ phase: "review", moveCount: 1, playbackActive: true });
     room.updateAnimationSpeed(host.id, 10);
-    vi.advanceTimersByTime(99);
+    const currentFirstMove = movementDurationMs(5, firstDistance);
+    vi.advanceTimersByTime(currentFirstMove - 1);
     expect(room.snapshot(host.id)).toMatchObject({ phase: "review", moveCount: 1 });
     vi.advanceTimersByTime(1);
+    expect(room.snapshot(host.id)).toMatchObject({ phase: "review", moveCount: 2, playbackActive: true });
+    vi.advanceTimersByTime(movementDurationMs(10, secondDistance));
     expect(room.snapshot(host.id)).toMatchObject({ phase: "review", moveCount: 2, playbackActive: false });
   });
 

@@ -63,7 +63,6 @@ test("two isolated players create, join, and start a match", async ({ browser })
   await host.keyboard.press("Space");
   await expect(host.locator(".selected-robot")).toHaveCount(0);
   const proofRobot = host.locator(".robot").first();
-  await expect(proofRobot.locator("xpath=..")).toHaveCSS("transition-duration", "0.6s");
   const robotTitle = await proofRobot.getAttribute("title");
   const robotName = robotTitle?.split(" ")[0];
   const startLabel = await host.getByRole("gridcell", { name: new RegExp(`${robotName} robot`) }).getAttribute("aria-label");
@@ -74,6 +73,9 @@ test("two isolated players create, join, and start a match", async ({ browser })
   const [endRow, endCol] = coordinates(destinationLabel);
   const key = endRow < startRow ? "ArrowUp" : endRow > startRow ? "ArrowDown" : endCol < startCol ? "ArrowLeft" : "ArrowRight";
   await host.keyboard.press(key);
+  const travelDistance = Math.abs(endRow - startRow) + Math.abs(endCol - startCol);
+  const expectedDuration = `${Math.round(600 * travelDistance / 15) / 1000}s`;
+  await expect(proofRobot.locator("xpath=..")).toHaveCSS("transition-duration", expectedDuration);
   await expect(host.locator(".proof-status>strong")).toContainText("1 / 5");
 
   await hostContext.close();

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import {
-  animationDurationMs, createRoomSchema, joinRoomSchema, legalMoves,
+  createRoomSchema, joinRoomSchema, legalMoves,
   type BiddingSeconds, type CommandResult, type Direction, type LegalMove, type ProofSeconds, type RobotId, type RoomSnapshot, type SolverResult, type Target
 } from "@robot-rebound/shared";
 import { Board } from "./Board";
@@ -152,6 +152,9 @@ function Game({ snapshot, connected, error, onError, isDiscord }: { snapshot: Ro
   const self = snapshot.players.find((player) => player.id === snapshot.selfId)!;
   const [selectedRobot, setSelectedRobot] = useState<RobotId | null>(null);
   const [bid, setBid] = useState("");
+  const [solverResult, setSolverResult] = useState<SolverResult | null>(null);
+  const solverTarget = "target" in snapshot ? snapshot.target : null;
+  const solverRound = "round" in snapshot ? snapshot.round : null;
   const deadline = "deadline" in snapshot && snapshot.deadline !== null ? snapshot.deadline : undefined;
   const unlimitedProof = snapshot.phase === "proving" && snapshot.deadline === null;
   const seconds = useCountdown(deadline);
@@ -168,6 +171,15 @@ function Game({ snapshot, connected, error, onError, isDiscord }: { snapshot: Ro
   const activeMoves = useMemo<LegalMove[]>(() => (canProve || reviewInteractive) && activeSelected ? legalMoves(snapshot.board, robots as Extract<RoomSnapshot, { phase: "proving" | "review" }>["robots"], activeSelected) : [], [canProve, reviewInteractive, robots, activeSelected, snapshot.board]);
   useEffect(() => setSelectedRobot(null), [snapshot.phase, "round" in snapshot ? snapshot.round : 0, snapshot.phase === "proving" ? snapshot.activeBidderId : ""]);
   useEffect(() => setBid(""), ["round" in snapshot ? snapshot.round : 0]);
+  useEffect(() => {
+    setSolverResult(null);
+    if (!solverTarget || solverRound === null || !("startRobots" in snapshot || snapshot.phase === "solving" || snapshot.phase === "bidding")) return;
+    const startRobots = "startRobots" in snapshot ? snapshot.startRobots : snapshot.robots;
+    const worker = new Worker(new URL("./solver.worker.ts", import.meta.url), { type: "module" });
+    worker.onmessage = (event: MessageEvent<SolverResult>) => setSolverResult(event.data);
+    worker.postMessage({ board: snapshot.board, robots: startRobots, target: solverTarget, maxDepth: 999 });
+    return () => worker.terminate();
+  }, [snapshot.board.id, solverRound, solverTarget?.id]);
   const moveByCell = (row: number, col: number) => {
     if (!activeSelected) return;
     if (canPlace) command("placement:place", { robot: activeSelected, position: { row, col } });
@@ -223,14 +235,14 @@ function Game({ snapshot, connected, error, onError, isDiscord }: { snapshot: Ro
       <Leaderboard snapshot={snapshot} />
       <section className="board-panel">
         {"target" in snapshot && <div className={`target-banner target-${snapshot.target.robot}`}><span>{snapshot.target.symbol}</span><b>{snapshot.target.robot === "wild" ? "Any robot" : `${snapshot.target.robot} robot`}</b> to the highlighted destination</div>}
-        <Board board={snapshot.board} robots={robots} target={"target" in snapshot ? snapshot.target : undefined} interaction={canPlace ? "placement" : canProve ? "proof" : reviewInteractive ? "review" : "none"} selectedRobot={activeSelected} legalDestinations={activeMoves.map((move) => move.destination)} lockedRobots={lockedRobots} animationDuration={animationDurationMs(snapshot.animationSpeed)} onRobot={selectRobot} onCell={(position) => moveByCell(position.row, position.col)} onEmpty={() => reviewInteractive && command("review:select", { robot: null })} />
+        <Board board={snapshot.board} robots={robots} target={"target" in snapshot ? snapshot.target : undefined} interaction={canPlace ? "placement" : canProve ? "proof" : reviewInteractive ? "review" : "none"} selectedRobot={activeSelected} legalDestinations={activeMoves.map((move) => move.destination)} lockedRobots={lockedRobots} animationSpeed={snapshot.animationSpeed} onRobot={selectRobot} onCell={(position) => moveByCell(position.row, position.col)} onEmpty={() => reviewInteractive && command("review:select", { robot: null })} />
         {canPlace && <div className="placement-controls"><button className="secondary" onClick={() => command("placement:randomize")}>Randomize robots</button><button className="waiting-action" onClick={() => command("placement:confirm")}>Reveal destination</button></div>}
       </section>
       <aside className="control-sidebar">
         {snapshot.phase === "proving" && <ProofPanel snapshot={snapshot} selfId={self.id} selectedRobot={selectedRobot} onReset={() => command("proof:reset")} />}
         {snapshot.phase === "review" && <ReviewPanel snapshot={snapshot} selfId={self.id} selectedRobot={reviewSelected} command={command} />}
         {self.isHost && <SpeedControl speed={snapshot.animationSpeed} command={command} />}
-        <ActionPanel snapshot={snapshot} selfId={self.id} bid={bid} setBid={setBid} alreadyBid={alreadyBid} command={command} />
+        <ActionPanel snapshot={snapshot} selfId={self.id} bid={bid} setBid={setBid} alreadyBid={alreadyBid} solverResult={solverResult} command={command} />
         {self.isHost && snapshot.phase !== "lobby" && snapshot.phase !== "results" && <button className="danger-button" onClick={endMatch}>End match early</button>}
         {error && <p role="alert" className="error">{error}</p>}
       </aside>
@@ -238,7 +250,7 @@ function Game({ snapshot, connected, error, onError, isDiscord }: { snapshot: Ro
   </main>;
 }
 
-function ActionPanel({ snapshot, selfId, bid, setBid, alreadyBid, command }: { snapshot: RoomSnapshot; selfId: string; bid: string; setBid: (value: string) => void; alreadyBid: boolean; command: (event: string, payload?: object) => void }) {
+function ActionPanel({ snapshot, selfId, bid, setBid, alreadyBid, solverResult, command }: { snapshot: RoomSnapshot; selfId: string; bid: string; setBid: (value: string) => void; alreadyBid: boolean; solverResult: SolverResult | null; command: (event: string, payload?: object) => void }) {
   const bidInputRef = useRef<HTMLInputElement>(null);
   const eligible = snapshot.players.find((player) => player.id === selfId)?.eligible ?? false;
   const canBid = (snapshot.phase === "solving" || snapshot.phase === "bidding") && eligible && !alreadyBid;
@@ -249,7 +261,7 @@ function ActionPanel({ snapshot, selfId, bid, setBid, alreadyBid, command }: { s
   if (snapshot.phase === "placement") { const placer = snapshot.players.find((player) => player.id === snapshot.placerId); return <section className="action-card"><h2>Placement</h2><p>{placer?.id === selfId ? "Click a robot, then an open cell. Keep every robot off the destination symbols." : `${placer?.name} is placing the robots.`}</p></section>; }
   if (snapshot.phase === "solving" || snapshot.phase === "bidding") return <section className="action-card"><h2>{snapshot.phase === "solving" ? "Found a route?" : "Bidding is open"}</h2><p>Each player gets one bid. Type a count and press Enter, or lock a quick bid.</p><form className="bid-entry" onSubmit={(event) => { event.preventDefault(); submitBid(parsedBid); }}><input ref={bidInputRef} aria-label="Move count" inputMode="numeric" autoComplete="off" placeholder="Move count" value={bid} disabled={!canBid} onChange={(event) => setBid(event.target.value.replace(/\D/g, ""))} /></form><div className="quick-bids" aria-label="Quick bids">{Array.from({ length: 30 }, (_, index) => index + 1).map((count) => <button key={count} disabled={!canBid} onClick={() => submitBid(count)}>{count}</button>)}</div>{alreadyBid && <p className="bid-locked">Your bid is locked.</p>}{snapshot.phase === "bidding" && <BidList snapshot={snapshot} />}</section>;
   if (snapshot.phase === "proving") return <section className="action-card"><h2>Proof in progress</h2><p>{snapshot.activeBidderId === selfId ? "Click a robot, then one of its highlighted landing cells." : `${snapshot.players.find((player) => player.id === snapshot.activeBidderId)?.name} is proving.`}</p><BidList snapshot={snapshot} /></section>;
-  if (snapshot.phase === "review") return <SolutionPanel snapshot={snapshot} command={command} />;
+  if (snapshot.phase === "review") return <SolutionPanel snapshot={snapshot} result={solverResult} command={command} />;
   return <section className="action-card"><h2>Match complete</h2><p>Winners: {snapshot.winners.map((id) => snapshot.players.find((player) => player.id === id)?.name).join(", ")}</p>{snapshot.hostId === selfId && <button onClick={() => command("match:lobby")}>Return to lobby</button>}</section>;
 }
 
@@ -258,15 +270,7 @@ function ReviewPanel({ snapshot, selfId, selectedRobot, command }: { snapshot: E
   return <section className="proof-status review-status"><span>Shared moves</span><strong>{snapshot.moveCount}</strong><p>{snapshot.playbackActive ? "Playing optimal strategy…" : selectedRobot ? `${selectedRobot} selected` : `${winner} solved in ${snapshot.winningMoveCount}`}</p><button className="proof-reset" disabled={snapshot.playbackActive} onClick={() => command("review:reset")}>Reset board</button>{snapshot.hostId === selfId && <button className="advance-review" onClick={() => command("review:advance")}>{snapshot.round >= snapshot.roundCount ? "Show final scores" : "Next round"}</button>}</section>;
 }
 
-function SolutionPanel({ snapshot, command }: { snapshot: Extract<RoomSnapshot, { phase: "review" }>; command: (event: string, payload?: object) => void }) {
-  const [result, setResult] = useState<SolverResult | null>(null);
-  useEffect(() => {
-    setResult(null);
-    const worker = new Worker(new URL("./solver.worker.ts", import.meta.url), { type: "module" });
-    worker.onmessage = (event: MessageEvent<SolverResult>) => setResult(event.data);
-    worker.postMessage({ board: snapshot.board, robots: snapshot.startRobots, target: snapshot.target, maxDepth: snapshot.winningMoveCount });
-    return () => worker.terminate();
-  }, [snapshot.board.id, snapshot.round, snapshot.target.id, snapshot.winningMoveCount]);
+function SolutionPanel({ snapshot, result, command }: { snapshot: Extract<RoomSnapshot, { phase: "review" }>; result: SolverResult | null; command: (event: string, payload?: object) => void }) {
   return <section className="action-card solution-card"><h2>Shortest strategies</h2>{!result ? <p>Calculating the fewest possible moves…</p> : result.moveCount === null ? <p>No solution was found within the accepted proof count.</p> : <><div className="solution-table" role="table" aria-label="Shortest strategies"><div className="solution-heading" role="row"><b role="columnheader">Moves</b><b role="columnheader">Strategy</b><span /></div>{result.solutions.map((solution, index) => <div className="solution-row" role="row" key={index}><span role="cell">{result.moveCount}</span><span role="cell" className="solution-arrows">{solution.map((move, moveIndex) => <span key={moveIndex} className={`solution-arrow robot-${move.robot}`} title={`${move.robot} ${move.direction}`} aria-label={`${move.robot} ${move.direction}`}>{({ north: "↑", east: "→", south: "↓", west: "←" } as const)[move.direction]}</span>)}</span><button className="strategy-play" disabled={snapshot.playbackActive} aria-label={`Play strategy ${index + 1}`} title={`Play strategy ${index + 1}`} onClick={() => command("review:play", { moves: solution })}>▶</button></div>)}</div>{result.capped && <p className="solution-note">Showing the first five shortest strategies. More may exist.</p>}</>}</section>;
 }
 
