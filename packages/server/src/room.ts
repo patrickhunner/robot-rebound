@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import {
   createRandomBoard, moveRobot, randomRobotPositions, targetSatisfied, validatePlacement,
   type BidView, type BiddingSeconds, type BoardDefinition, type Direction, type PlayerView, type Position, type ProofSeconds, type RobotId,
-  type RobotPositions, type RoomSnapshot, type Target
+  type RobotLocks, type RobotPositions, type RoomSnapshot, type Target
 } from "@robot-rebound/shared";
 
 interface Player {
@@ -18,6 +18,7 @@ type Phase =
   | { kind: "solving"; round: number; robots: RobotPositions; target: Target }
   | { kind: "bidding"; round: number; robots: RobotPositions; target: Target; bids: Bid[]; deadline: number }
   | { kind: "proving"; round: number; startRobots: RobotPositions; robots: RobotPositions; target: Target; bids: Bid[]; bidIndex: number; moveCount: number; deadline: number | null }
+  | { kind: "review"; round: number; startRobots: RobotPositions; robots: RobotPositions; target: Target; winnerId: string; winningMoveCount: number; moveCount: number; locks: RobotLocks }
   | { kind: "results"; winners: string[] };
 
 export type Broadcast = (code: string) => void;
@@ -45,7 +46,7 @@ export class GameRoom {
   private timer?: ReturnType<typeof setTimeout>;
   private bidSequence = 0;
 
-  constructor(code: string, name: string, biddingSeconds: BiddingSeconds, socketId: string, private readonly broadcast: Broadcast, private readonly random = Math.random, proofSeconds: ProofSeconds = 60, excludedBoardId?: string, discordUserId?: string) {
+  constructor(code: string, name: string, biddingSeconds: BiddingSeconds, socketId: string, private readonly broadcast: Broadcast, private readonly random = Math.random, proofSeconds: ProofSeconds = "unlimited", excludedBoardId?: string, discordUserId?: string) {
     this.code = code;
     this.biddingSeconds = biddingSeconds;
     this.proofSeconds = proofSeconds;
@@ -192,6 +193,55 @@ export class GameRoom {
     this.broadcast(this.code);
   }
 
+  selectReviewRobot(playerId: string, robot: RobotId | null): void {
+    if (this.phase.kind !== "review") throw new Error("The round is not being reviewed");
+    this.requireConnectedPlayer(playerId);
+    if (robot) {
+      const owner = this.phase.locks[robot];
+      if (owner && owner !== playerId) throw new Error("That robot is being used by another player");
+    }
+    for (const id of Object.keys(this.phase.locks) as RobotId[]) {
+      if (this.phase.locks[id] === playerId) delete this.phase.locks[id];
+    }
+    if (robot) this.phase.locks[robot] = playerId;
+    this.broadcast(this.code);
+  }
+
+  moveReviewRobot(playerId: string, robot: RobotId, direction: Direction): void {
+    if (this.phase.kind !== "review") throw new Error("The round is not being reviewed");
+    this.requireConnectedPlayer(playerId);
+    if (this.phase.locks[robot] !== playerId) throw new Error("Select that robot before moving it");
+    const destination = moveRobot(this.board, this.phase.robots, robot, direction);
+    if (!destination) throw new Error("That robot cannot move in that direction");
+    this.phase.robots = { ...this.phase.robots, [robot]: destination };
+    this.phase.moveCount++;
+    this.broadcast(this.code);
+  }
+
+  resetReview(playerId: string): void {
+    if (this.phase.kind !== "review") throw new Error("The round is not being reviewed");
+    this.requireConnectedPlayer(playerId);
+    this.phase.robots = copyRobots(this.phase.startRobots);
+    this.phase.moveCount = 0;
+    this.phase.locks = {};
+    this.broadcast(this.code);
+  }
+
+  advanceReview(playerId: string): void {
+    this.requireHost(playerId);
+    if (this.phase.kind !== "review") throw new Error("The round is not being reviewed");
+    const nextStartingPositions = copyRobots(this.phase.startRobots);
+    const nextRound = this.phase.round + 1;
+    if (!this.targetDeck.length) {
+      const best = Math.max(...this.players.map((player) => player.score));
+      this.phase = { kind: "results", winners: this.players.filter((player) => player.score === best).map((player) => player.id) };
+      this.broadcast(this.code);
+      return;
+    }
+    this.placementIndex = (this.placementIndex + 1) % this.placementOrder.length;
+    this.beginPlacement(nextRound, nextStartingPositions);
+  }
+
   returnToLobby(playerId: string): void {
     this.requireHost(playerId);
     if (this.phase.kind !== "results") throw new Error("The match is not finished");
@@ -217,6 +267,11 @@ export class GameRoom {
     player.connected = false;
     player.disconnectedAt = Date.now();
     delete player.socketId;
+    if (this.phase.kind === "review") {
+      for (const id of Object.keys(this.phase.locks) as RobotId[]) {
+        if (this.phase.locks[id] === player.id) delete this.phase.locks[id];
+      }
+    }
     if (wasHost) {
       player.isHost = false;
       this.assignRandomConnectedHost();
@@ -255,6 +310,7 @@ export class GameRoom {
     if (phase.kind === "placement") return { ...base, phase: "placement", round: phase.round, placerId: phase.placerId, robots: phase.robots };
     if (phase.kind === "solving") return { ...base, phase: "solving", round: phase.round, robots: phase.robots, target: phase.target };
     if (phase.kind === "bidding") return { ...base, phase: "bidding", round: phase.round, robots: phase.robots, target: phase.target, bids: phase.bids, deadline: phase.deadline };
+    if (phase.kind === "review") return { ...base, phase: "review", round: phase.round, startRobots: phase.startRobots, robots: phase.robots, target: phase.target, winnerId: phase.winnerId, winningMoveCount: phase.winningMoveCount, moveCount: phase.moveCount, locks: phase.locks };
     if (phase.kind === "results") return { ...base, phase: "results", winners: phase.winners };
     const active = this.orderedBids(phase.bids)[phase.bidIndex]!;
     return { ...base, phase: "proving", round: phase.round, robots: phase.robots, target: phase.target, bids: phase.bids, activeBidderId: active.playerId, bidCount: active.count, moveCount: phase.moveCount, deadline: phase.deadline };
@@ -309,21 +365,16 @@ export class GameRoom {
 
   private completeRound(playerId: string): void {
     if (this.phase.kind !== "proving") return;
-    const nextStartingPositions = copyRobots(this.phase.startRobots);
-    const nextRound = this.phase.round + 1;
+    const startRobots = copyRobots(this.phase.startRobots);
+    const { round, target } = this.phase;
+    const winningMoveCount = this.orderedBids(this.phase.bids)[this.phase.bidIndex]!.count;
     this.clearTimer();
     const winner = this.requirePlayer(playerId);
     winner.score++;
-    winner.wonTargets.push(this.phase.target);
+    winner.wonTargets.push(target);
     this.targetDeck.shift();
-    if (!this.targetDeck.length) {
-      const best = Math.max(...this.players.map((player) => player.score));
-      this.phase = { kind: "results", winners: this.players.filter((player) => player.score === best).map((player) => player.id) };
-      this.broadcast(this.code);
-      return;
-    }
-    this.placementIndex = (this.placementIndex + 1) % this.placementOrder.length;
-    this.beginPlacement(nextRound, nextStartingPositions);
+    this.phase = { kind: "review", round, startRobots, robots: copyRobots(startRobots), target, winnerId: playerId, winningMoveCount, moveCount: 0, locks: {} };
+    this.broadcast(this.code);
   }
 
   private orderedBids(bids: Bid[]): Bid[] { return [...bids].sort((a, b) => a.count - b.count || a.order - b.order); }
@@ -336,6 +387,7 @@ export class GameRoom {
     return deck;
   }
   private requirePlayer(id: string): Player { const player = this.players.find((candidate) => candidate.id === id); if (!player) throw new Error("Player not found"); return player; }
+  private requireConnectedPlayer(id: string): Player { const player = this.requirePlayer(id); if (!player.connected) throw new Error("Player is disconnected"); return player; }
   private requireHost(id: string): Player { const player = this.requirePlayer(id); if (!player.isHost) throw new Error("Only the host can do that"); return player; }
   private assignRandomConnectedHost(): Player | undefined {
     const current = this.players.find((player) => player.isHost && player.connected);

@@ -6,7 +6,7 @@ import express from "express";
 import { createServer } from "node:http";
 import { Server } from "socket.io";
 import {
-  bidSchema, createRoomSchema, discordTokenExchangeSchema, joinRoomSchema, lobbySettingsSchema, moveSchema, placeRobotSchema, roomCommandSchema,
+  bidSchema, createRoomSchema, discordTokenExchangeSchema, joinRoomSchema, lobbySettingsSchema, moveSchema, placeRobotSchema, reviewSelectSchema, roomCommandSchema,
   type CommandResult
 } from "@robot-rebound/shared";
 import { exchangeDiscordCode, type DiscordJoinTicket } from "./discord.js";
@@ -95,7 +95,7 @@ io.on("connection", (socket) => {
   socket.on("room:create", (raw, callback) => run(callback, () => {
     const input = createRoomSchema.parse(raw);
     const code = createRoomCode(new Set(rooms.keys()));
-    const room = new GameRoom(code, input.name, 45, socket.id, broadcast, Math.random, 60, lastCreatedBoardId);
+    const room = new GameRoom(code, input.name, 30, socket.id, broadcast, Math.random, "unlimited", lastCreatedBoardId);
     lastCreatedBoardId = room.board.id;
     rooms.set(code, room);
     const player = room.players[0]!;
@@ -124,11 +124,11 @@ io.on("connection", (socket) => {
       const created = new GameRoom(
         discordSession.instanceId,
         displayNameForDiscord(discordSession.user),
-        45,
+        30,
         socket.id,
         broadcast,
         Math.random,
-        60,
+        "unlimited",
         lastCreatedBoardId,
         discordSession.user.id
       );
@@ -164,6 +164,10 @@ io.on("connection", (socket) => {
   command("bid:submit", bidSchema, (room, playerId, input) => room.bid(playerId, input.count));
   command("proof:move", moveSchema, (room, playerId, input) => room.move(playerId, input.robot, input.direction));
   command("proof:reset", roomCommandSchema, (room, playerId) => room.resetProof(playerId));
+  command("review:select", reviewSelectSchema, (room, playerId, input) => room.selectReviewRobot(playerId, input.robot));
+  command("review:move", moveSchema, (room, playerId, input) => room.moveReviewRobot(playerId, input.robot, input.direction));
+  command("review:reset", roomCommandSchema, (room, playerId) => room.resetReview(playerId));
+  command("review:advance", roomCommandSchema, (room, playerId) => room.advanceReview(playerId));
   command("match:end", roomCommandSchema, (room, playerId) => room.endMatch(playerId));
   command("match:lobby", roomCommandSchema, (room, playerId) => room.returnToLobby(playerId));
 

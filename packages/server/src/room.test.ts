@@ -8,7 +8,7 @@ describe("GameRoom", () => {
 
   it("runs placement, timed bidding, ordered proofs, and an all-fail retry", () => {
     const broadcasts: string[] = [];
-    const room = new GameRoom("ABC234", "Host", 30, "socket-1", (code) => broadcasts.push(code), () => 0.5);
+    const room = new GameRoom("ABC234", "Host", 30, "socket-1", (code) => broadcasts.push(code), () => 0.5, 60);
     const host = room.players[0]!;
     const guest = room.join("Guest", "socket-2").player;
     room.start(host.id);
@@ -199,7 +199,7 @@ describe("GameRoom", () => {
     expect(unlimited.snapshot(unlimited.players[0]!.id).phase).toBe("solving");
   });
 
-  it("reuses the solved round's starting positions for the next placement", () => {
+  it("enters review after a solution and reuses the round's starting positions after host advance", () => {
     const room = new GameRoom("ABC234", "Solo", 0, "socket-1", () => undefined, () => 0.25);
     const player = room.players[0]!;
     room.start(player.id);
@@ -216,8 +216,34 @@ describe("GameRoom", () => {
     room.move(player.id, mover, move.direction);
     expect(player.wonTargets).toEqual([target]);
     const snapshot = room.snapshot(player.id);
-    expect(snapshot.phase).toBe("placement");
-    if (snapshot.phase !== "placement") throw new Error("Expected placement");
-    expect(snapshot.robots).toEqual(starting);
+    expect(snapshot.phase).toBe("review");
+    if (snapshot.phase !== "review") throw new Error("Expected review");
+    expect(snapshot).toMatchObject({ robots: starting, startRobots: starting, moveCount: 0, winningMoveCount: 1, winnerId: player.id });
+    room.advanceReview(player.id);
+    const placement = room.snapshot(player.id);
+    expect(placement.phase).toBe("placement");
+    if (placement.phase !== "placement") throw new Error("Expected placement");
+    expect(placement.robots).toEqual(starting);
+  });
+
+  it("coordinates review locks, moves, resets, and disconnect cleanup", () => {
+    const room = new GameRoom("ABC234", "Host", 30, "socket-1", () => undefined, () => 0.25);
+    const host = room.players[0]!;
+    const guest = room.join("Guest", "socket-2").player;
+    room.board = classicBoard;
+    const target = classicBoard.targets[0]!;
+    const starting = randomRobotPositions(classicBoard, () => 0.25);
+    room.phase = { kind: "review", round: 1, startRobots: structuredClone(starting), robots: structuredClone(starting), target, winnerId: host.id, winningMoveCount: 6, moveCount: 0, locks: {} };
+    const robot = (['red', 'blue', 'green', 'yellow', 'silver'] as const).find((id) => legalMoves(classicBoard, starting, id).length)!;
+    const move = legalMoves(classicBoard, starting, robot)[0]!;
+    room.selectReviewRobot(host.id, robot);
+    expect(() => room.selectReviewRobot(guest.id, robot)).toThrow(/another player/);
+    room.moveReviewRobot(host.id, robot, move.direction);
+    expect(room.snapshot(host.id)).toMatchObject({ phase: "review", moveCount: 1 });
+    room.resetReview(guest.id);
+    expect(room.snapshot(host.id)).toMatchObject({ phase: "review", robots: starting, moveCount: 0, locks: {} });
+    room.selectReviewRobot(host.id, robot);
+    room.disconnect("socket-1");
+    expect(room.snapshot(guest.id)).toMatchObject({ phase: "review", locks: {} });
   });
 });

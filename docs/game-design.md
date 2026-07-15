@@ -17,10 +17,11 @@ There are red, blue, green, and yellow robots plus a neutral silver robot. A mov
 3. Players solve mentally with unlimited time.
 4. The first one-time bid starts the configured bidding timer. Players type a count and press Enter or use a 1–30 quick bid. If every connected eligible player submits before expiry, proof begins immediately.
 5. Claims are tried by lowest count, then server receipt order.
-6. The active player has the host-selected proof duration to demonstrate exactly the bid count. Their screen receives an active-turn color treatment. They click a robot, see its legal landing cells, and click one to move; that robot remains selected until they choose another. Moves are visible to everyone. Reset restores the placement and move count but not the timer. Unlimited proofs have no countdown; if the prover disconnects, their attempt advances after the normal reconnect grace period.
+6. The active player has the host-selected proof duration to demonstrate exactly the bid count. Their screen receives an active-turn color treatment. They click a robot, see its legal landing cells, and click one or use an arrow key to move; that robot remains selected until they choose another. Moves are visible to everyone. Reset restores the placement and move count but not the timer. Unlimited proofs have no countdown; if the prover disconnects, their attempt advances after the normal reconnect grace period.
 7. A failed attempt restores the placement and passes to the next bidder. If all fail, the same target returns to unlimited solving.
-8. A success awards a point and advances to a fresh placement for the next hidden target.
+8. A success awards a point and opens a shared review from the revealed starting positions. Everyone may demonstrate alternatives with clicks or arrow keys, reset the shared board, and hold one robot lock at a time. A background solver displays up to five shortest strategies; these demonstrations do not change scores.
+9. The host advances from review to a fresh placement for the next hidden target, or to results after the final round.
 
 ## MVP boundary
 
-The MVP includes room codes, guest reconnection, host transfer, presence, scoring, all 17 rounds, and a post-match return to the same lobby. It intentionally excludes accounts, persistence, chat, matchmaking, board editors, procedural boards, automated solvers, mobile polish, audio, moderation controls, pause/skip, and multi-server scaling.
+The MVP includes room codes, guest reconnection, host transfer, presence, scoring, all 17 rounds, shared post-round review, optimal-strategy display, and a post-match return to the same lobby. It intentionally excludes accounts, persistence, chat, matchmaking, board editors, procedural boards, mobile polish, audio, moderation controls, pause/skip, and multi-server scaling.

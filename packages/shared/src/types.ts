@@ -38,6 +38,8 @@ export interface PlayerView {
 }
 
 export interface BidView { playerId: string; count: number; receivedAt: number }
+export interface SolutionMove { robot: RobotId; direction: Direction }
+export type RobotLocks = Partial<Record<RobotId, string>>;
 export interface BaseRoomView {
   code: string;
   selfId: string;
@@ -54,6 +56,7 @@ export type RoomSnapshot = BaseRoomView & (
   | { phase: "solving"; round: number; robots: RobotPositions; target: Target }
   | { phase: "bidding"; round: number; robots: RobotPositions; target: Target; bids: BidView[]; deadline: number }
   | { phase: "proving"; round: number; robots: RobotPositions; target: Target; bids: BidView[]; activeBidderId: string; bidCount: number; moveCount: number; deadline: number | null }
+  | { phase: "review"; round: number; startRobots: RobotPositions; robots: RobotPositions; target: Target; winnerId: string; winningMoveCount: number; moveCount: number; locks: RobotLocks }
   | { phase: "results"; winners: string[] }
 );
 

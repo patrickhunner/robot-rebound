@@ -1,16 +1,8 @@
-## Requested Changes
+## New Features
 
-1. Users can use arrow keys when showing their proofs. If you click on a robot, you can use the 4 arrow keys to move to the 4 possible spaces around them.
+## Submitted For Review (move new features here once completed)
 
-## Submitted For Review
-
-1. **Move timers into editable lobby settings**Room creation now only asks for a name. The host can change bidding and proof durations in the lobby and save them repeatedly until Start; guests see the selected values and the server rejects changes after play begins.
-2. **Support configurable match length**Hosts can select 1–999 rounds. The server builds shuffled 17-target cycles, uses a random subset for shorter matches, and reshuffles before repeating destinations for matches longer than 17 rounds.
-3. **Add a won-tile leaderboard left of the board**Each round winner receives that destination tile. The left leaderboard renders captured colors/symbols next to each player and sorts by tile count, with ties sorted by name.
-4. **Enlarge proof progress and Reset to the board's right**Proof move usage is now shown in a dedicated high-contrast right-side panel with large numbers. The active prover receives a large Reset Proof button immediately below it.
-5. **Replace bidding controls with focused entry and quick bids**Eligible players receive an empty, automatically focused numeric text field that submits on Enter. A five-column grid of buttons numbered 1–30 submits and locks a bid immediately.
-6. **Keep the selected robot active between moves**Placement and proof begin with no robot selected. After selection, the same robot remains selected through moves until another robot is chosen or the game phase changes.
-7. **Begin proof when everyone has bid**Proof starts immediately once every connected, round-eligible player has submitted. Disconnected seats and mid-round joiners do not block progression.
-8. **Visually distinguish the active player's screen**The designated placer and active prover receive a distinct full-screen background tint that other players do not see.
-9. **Draw attention to Reveal Destination**
-   The active placer's Reveal Destination button pulses while the room is waiting, with animation disabled for users who prefer reduced motion.
+1. **Add arrow-key movement** — The active prover can move a selected robot with the four arrow keys. Arrow keys also work during shared post-round demonstrations and do not interfere with form controls.
+2. **Change game defaults** — New browser and Discord rooms begin with a 30-second bidding window and unlimited proof time.
+3. **Add shared post-round review** — A successful proof now awards its score and opens a shared review from the round's starting layout. Players can lock and move different robots concurrently, release locks by clicking off, reset the shared board and move counter, and demonstrate alternatives without affecting scores. The host explicitly advances to the next round or final results.
+4. **Calculate shortest strategies** — A background solver proves the minimum move count using the accepted proof as an upper bound. The review sidebar displays up to five shortest paths as colored directional arrows and notes when more paths may exist.

@@ -10,6 +10,8 @@ test("two isolated players create, join, and start a match", async ({ browser })
   await host.getByLabel("Display name").fill("Ada");
   await host.getByRole("button", { name: "Create room" }).click();
   await expect(host.getByText(/Room [A-Z2-9]{6}/)).toBeVisible();
+  await expect(host.getByLabel("Bidding window")).toHaveValue("30");
+  await expect(host.getByLabel("Proof time")).toHaveValue("unlimited");
   const roomText = await host.locator(".room-code b").textContent();
   expect(roomText).toMatch(/^[A-Z2-9]{6}$/);
   const readDestinations = () => host.locator(".destination").evaluateAll((items) => items.map((item) => `${item.getAttribute("title")}@${item.parentElement?.getAttribute("aria-label")}`));
@@ -19,7 +21,6 @@ test("two isolated players create, join, and start a match", async ({ browser })
   await host.getByLabel("Rounds").fill("20");
   await host.getByLabel("Bidding window").selectOption("30");
   await host.getByLabel("Proof time").selectOption("15");
-  await host.getByRole("button", { name: "Save settings" }).click();
 
   await guest.goto("/");
   await guest.getByLabel("Room code").fill(roomText);
@@ -56,6 +57,16 @@ test("two isolated players create, join, and start a match", async ({ browser })
   await expect(host.locator(".proof-status>strong")).toContainText("0 / 5");
   await expect(host.getByRole("button", { name: "Reset proof" })).toBeVisible();
   await expect(host.locator(".game-shell")).toHaveClass(/active-turn/);
+  const proofRobot = host.locator(".robot").first();
+  const startLabel = await proofRobot.locator("xpath=..").getAttribute("aria-label");
+  await proofRobot.click();
+  const destinationLabel = await host.locator(".legal-destination").first().getAttribute("aria-label");
+  const coordinates = (label) => label?.match(/row (\d+), column (\d+)/)?.slice(1).map(Number);
+  const [startRow, startCol] = coordinates(startLabel);
+  const [endRow, endCol] = coordinates(destinationLabel);
+  const key = endRow < startRow ? "ArrowUp" : endRow > startRow ? "ArrowDown" : endCol < startCol ? "ArrowLeft" : "ArrowRight";
+  await host.keyboard.press(key);
+  await expect(host.locator(".proof-status>strong")).toContainText("1 / 5");
 
   await hostContext.close();
   await guestContext.close();

@@ -16,7 +16,11 @@ Every room occupies exactly one phase: lobby, placement, solving, bidding, provi
 
 Finite timers store absolute server deadlines. Browsers display their own countdown from those deadlines, while server timers perform transitions. Unlimited proofs use a `null` deadline and advance only on an exhausted bid or after a disconnected prover's grace period. A reconnect token identifies a guest for two minutes; tokens are kept per browser tab in session storage so several local windows can be independent players.
 
+After a successful proof, the server enters a review phase instead of advancing immediately. It owns the shared review positions, move counter, and per-robot player locks. Review resets restore the round's revealed positions, and review movement never changes scoring or the next round's starting positions.
+
 Random placement is generated and validated by the server. The client uses the shared movement engine only to preview legal proof endpoints; clicking one still sends a directional command that the server independently recalculates.
+
+Optimal strategies are derived from the immutable round-start snapshot in a browser Web Worker. The pure shared solver searches only as deep as the accepted proof, returns at most five proven shortest sequences, and has no authority over room state.
 
 ## Trust boundaries
 
