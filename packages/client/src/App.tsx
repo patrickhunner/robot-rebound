@@ -5,7 +5,7 @@ import {
   type BiddingSeconds, type CommandResult, type Direction, type LegalMove, type ProofSeconds, type RobotId, type RoomSnapshot, type SolverResult, type Target
 } from "@robot-rebound/shared";
 import { Board } from "./Board";
-import { bootstrapDiscordSession, isDiscordActivity, type DiscordBootstrapSession } from "./discord";
+import { bootstrapDiscordSession, isDiscordActivity, type DiscordBootstrapProgress, type DiscordBootstrapSession } from "./discord";
 
 const socket = io({ autoConnect: false });
 type Session = { code: string; name: string; token: string };
@@ -23,6 +23,8 @@ export function App() {
   const [mode, setMode] = useState<AppMode>("loading");
   const [error, setError] = useState("");
   const [connected, setConnected] = useState(socket.connected);
+  const [bootstrapProgress, setBootstrapProgress] = useState<DiscordBootstrapProgress>("waking");
+  const [bootstrapAttempt, setBootstrapAttempt] = useState(0);
   const joinAttemptRef = useRef<string | null>(null);
   const browserSessionRecoverableRef = useRef(Boolean(session));
   const autoJoinFailedRef = useRef(false);
@@ -47,8 +49,10 @@ export function App() {
     const boot = async () => {
       if (isDiscordActivity()) {
         setMode("discord");
+        setError("");
+        setDiscordSession(null);
         try {
-          const next = await bootstrapDiscordSession();
+          const next = await bootstrapDiscordSession(setBootstrapProgress);
           if (cancelled) return;
           setDiscordSession(next);
           socket.auth = { mode: "discord", joinToken: next.joinToken };
@@ -65,7 +69,7 @@ export function App() {
     };
     void boot();
     return () => { cancelled = true; socket.disconnect(); };
-  }, []);
+  }, [bootstrapAttempt]);
 
   useEffect(() => {
     if (!socket.connected || snapshot || autoJoinFailedRef.current) return;
@@ -108,15 +112,16 @@ export function App() {
 
   if (!snapshot) {
     if (mode === "browser") return <Landing connected={connected} error={error} onError={setError} onComplete={completeJoin} />;
-    return <BootstrapScreen connected={connected} error={error} displayName={discordSession?.displayName} />;
+    return <BootstrapScreen connected={connected} error={error} progress={bootstrapProgress} displayName={discordSession?.displayName} onRetry={() => setBootstrapAttempt((attempt) => attempt + 1)} />;
   }
   return <Game snapshot={snapshot} connected={connected} error={error} onError={setError} isDiscord={mode === "discord"} />;
 }
 
-function BootstrapScreen({ connected, error, displayName }: { connected: boolean; error: string; displayName: string | undefined }) {
+function BootstrapScreen({ connected, error, progress, displayName, onRetry }: { connected: boolean; error: string; progress: DiscordBootstrapProgress; displayName: string | undefined; onRetry: () => void }) {
+  const message = progress === "waking" ? "Waking the game server… This can take up to two minutes." : progress === "authenticating" ? "Authenticating with Discord…" : "Connecting to the activity room…";
   return <main className="landing">
     <section className="hero"><p className="eyebrow">DISCORD ACTIVITY</p><h1>Robot<br />Rebound</h1><p>{displayName ? `Signed in as ${displayName}.` : "Starting the embedded session."}</p><span className={`connection ${connected ? "online" : ""}`}>{connected ? "Server connected" : "Connecting…"}</span></section>
-    <section className="entry-card"><h2>Preparing the room</h2><p>{error || "Authenticating with Discord and attaching to the activity instance."}</p></section>
+    <section className="entry-card"><h2>Preparing the room</h2><p>{error || message}</p>{error && <button onClick={onRetry}>Retry</button>}</section>
   </main>;
 }
 

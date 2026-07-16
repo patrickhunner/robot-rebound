@@ -10,7 +10,7 @@
     "dev": "concurrently -n server,client -c blue,green \"corepack pnpm --filter @robot-rebound/server dev\" \"corepack pnpm --filter @robot-rebound/client dev\"",
     "build": "corepack pnpm -r build",
     "start": "node packages/server/dist/index.js",
-    "test": "corepack pnpm --filter @robot-rebound/shared test && corepack pnpm --filter @robot-rebound/server test",
+    "test": "corepack pnpm --filter @robot-rebound/shared test && corepack pnpm --filter @robot-rebound/server test && corepack pnpm --filter @robot-rebound/client test",
     "test:e2e": "playwright test",
     "typecheck": "corepack pnpm --filter @robot-rebound/shared build && corepack pnpm -r typecheck"
   },

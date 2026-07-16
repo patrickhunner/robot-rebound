@@ -18,6 +18,8 @@ Open `http://127.0.0.1:5173` in multiple normal/private browser windows. Port 30
 
 The browser client hot-reloads. The backend deliberately does not watch files because workspace builds previously caused repeated restarts; restart `corepack pnpm dev` after changing server or shared rules.
 
+On free Render deployments, the Discord Activity may take up to two minutes to wake the server after inactivity. The preparation screen retries the health check automatically before requesting Discord authorization and offers an in-app Retry button if the server is still unavailable.
+
 Discord Activity mode needs these environment variables on the server:
 
 - `DISCORD_CLIENT_ID`
