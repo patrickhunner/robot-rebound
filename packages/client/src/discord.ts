@@ -25,6 +25,7 @@ interface ServerWarmupOptions {
 }
 
 let bootstrapPromise: Promise<DiscordBootstrapSession> | null = null;
+const serverReadyListeners = new Set<() => void>();
 
 export function isDiscordActivity(): boolean {
   return typeof window !== "undefined" && window.location.hostname.endsWith(".discordsays.com");
@@ -39,32 +40,46 @@ export function bootstrapDiscordSession(onProgress: (progress: DiscordBootstrapP
 }
 
 export async function waitForServer(onProgress: (progress: DiscordBootstrapProgress) => void = () => undefined, options: ServerWarmupOptions = {}): Promise<void> {
-  const checkHealth = options.checkHealth ?? checkServerHealth;
+  const usesSharedHealthCheck = options.checkHealth === undefined;
+  const checkHealth = options.checkHealth ?? pingServerNow;
   const now = options.now ?? Date.now;
   const sleep = options.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
   const deadline = now() + (options.maxWaitMs ?? 120_000);
   let delay = 1_000;
+  let announceReady: (() => void) | undefined;
+  const externallyReady = new Promise<boolean>((resolve) => {
+    announceReady = () => resolve(true);
+  });
+  if (usesSharedHealthCheck && announceReady) serverReadyListeners.add(announceReady);
   onProgress("waking");
-  while (now() < deadline) {
-    try {
-      if (await checkHealth()) return;
-    } catch {
-      // A sleeping Render instance commonly closes or times out early requests.
+  try {
+    while (now() < deadline) {
+      try {
+        if (await Promise.race([checkHealth(), externallyReady])) return;
+      } catch {
+        // A sleeping Render instance commonly closes or times out early requests.
+      }
+      const remaining = deadline - now();
+      if (remaining <= 0) break;
+      if (await Promise.race([sleep(Math.min(delay, remaining)).then(() => false), externallyReady])) return;
+      delay = Math.min(Math.ceil(delay * 1.5), 5_000);
     }
-    const remaining = deadline - now();
-    if (remaining <= 0) break;
-    await sleep(Math.min(delay, remaining));
-    delay = Math.min(Math.ceil(delay * 1.5), 5_000);
+  } finally {
+    if (announceReady) serverReadyListeners.delete(announceReady);
   }
   throw new Error("The game server is still waking up. Please try again.");
 }
 
-async function checkServerHealth(): Promise<boolean> {
+export async function pingServerNow(): Promise<boolean> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);
   try {
     const response = await fetch(`/health?wake=${Date.now()}`, { cache: "no-store", signal: controller.signal });
-    return response.ok;
+    if (response.ok) {
+      for (const listener of serverReadyListeners) listener();
+      return true;
+    }
+    return false;
   } finally {
     clearTimeout(timeout);
   }

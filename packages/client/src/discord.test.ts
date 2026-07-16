@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { waitForServer, type DiscordBootstrapProgress } from "./discord";
+import { pingServerNow, waitForServer, type DiscordBootstrapProgress } from "./discord";
 
 describe("Discord server warmup", () => {
   it("retries transient failures until the server becomes healthy", async () => {
@@ -34,5 +34,21 @@ describe("Discord server warmup", () => {
 
     expect(now).toBe(2_500);
     expect(checkHealth).toHaveBeenCalledTimes(2);
+  });
+
+  it("lets a successful manual ping unblock the automatic wait immediately", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({ ok: false } as Response)
+      .mockResolvedValueOnce({ ok: true } as Response);
+    try {
+      const waiting = waitForServer();
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      await expect(pingServerNow()).resolves.toBe(true);
+      await expect(waiting).resolves.toBeUndefined();
+    } finally {
+      fetchMock.mockRestore();
+      vi.useRealTimers();
+    }
   });
 });

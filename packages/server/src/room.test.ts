@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { classicBoard, legalMoves, movementDurationMs, randomRobotPositions } from "@robot-rebound/shared";
+import { classicBoard, legalMoves, playbackDelayMs, randomRobotPositions } from "@robot-rebound/shared";
 import { GameRoom } from "./room.js";
 
 describe("GameRoom", () => {
@@ -284,15 +284,15 @@ describe("GameRoom", () => {
     expect(room.snapshot(host.id)).toMatchObject({ phase: "review", robots: starting, moveCount: 0, locks: {}, playbackActive: true });
     expect(() => room.resetReview(host.id)).toThrow(/currently playing/);
     expect(() => room.selectReviewRobot(guest.id, "blue")).toThrow(/currently playing/);
-    vi.advanceTimersByTime(movementDurationMs(5, firstDistance));
+    vi.advanceTimersByTime(playbackDelayMs(5, firstDistance));
     expect(room.snapshot(host.id)).toMatchObject({ phase: "review", moveCount: 1, playbackActive: true });
     room.updateAnimationSpeed(host.id, 10);
-    const currentFirstMove = movementDurationMs(5, firstDistance);
+    const currentFirstMove = playbackDelayMs(5, firstDistance);
     vi.advanceTimersByTime(currentFirstMove - 1);
     expect(room.snapshot(host.id)).toMatchObject({ phase: "review", moveCount: 1 });
     vi.advanceTimersByTime(1);
     expect(room.snapshot(host.id)).toMatchObject({ phase: "review", moveCount: 2, playbackActive: true });
-    vi.advanceTimersByTime(movementDurationMs(10, secondDistance));
+    vi.advanceTimersByTime(playbackDelayMs(10, secondDistance));
     expect(room.snapshot(host.id)).toMatchObject({ phase: "review", moveCount: 2, playbackActive: false });
   });
 

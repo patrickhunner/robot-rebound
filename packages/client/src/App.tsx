@@ -5,7 +5,7 @@ import {
   type BiddingSeconds, type CommandResult, type Direction, type LegalMove, type ProofSeconds, type RobotId, type RoomSnapshot, type SolverResult, type Target
 } from "@robot-rebound/shared";
 import { Board } from "./Board";
-import { bootstrapDiscordSession, isDiscordActivity, type DiscordBootstrapProgress, type DiscordBootstrapSession } from "./discord";
+import { bootstrapDiscordSession, isDiscordActivity, pingServerNow, type DiscordBootstrapProgress, type DiscordBootstrapSession } from "./discord";
 
 const socket = io({ autoConnect: false });
 type Session = { code: string; name: string; token: string };
@@ -25,6 +25,7 @@ export function App() {
   const [connected, setConnected] = useState(socket.connected);
   const [bootstrapProgress, setBootstrapProgress] = useState<DiscordBootstrapProgress>("waking");
   const [bootstrapAttempt, setBootstrapAttempt] = useState(0);
+  const [wakeRequestPending, setWakeRequestPending] = useState(false);
   const joinAttemptRef = useRef<string | null>(null);
   const browserSessionRecoverableRef = useRef(Boolean(session));
   const autoJoinFailedRef = useRef(false);
@@ -112,16 +113,16 @@ export function App() {
 
   if (!snapshot) {
     if (mode === "browser") return <Landing connected={connected} error={error} onError={setError} onComplete={completeJoin} />;
-    return <BootstrapScreen connected={connected} error={error} progress={bootstrapProgress} displayName={discordSession?.displayName} onRetry={() => setBootstrapAttempt((attempt) => attempt + 1)} />;
+    return <BootstrapScreen connected={connected} error={error} progress={bootstrapProgress} wakeRequestPending={wakeRequestPending} displayName={discordSession?.displayName} onWake={async () => { setWakeRequestPending(true); try { await pingServerNow(); } catch { /* Automatic polling will continue after a failed manual ping. */ } finally { setWakeRequestPending(false); } }} onRetry={() => setBootstrapAttempt((attempt) => attempt + 1)} />;
   }
   return <Game snapshot={snapshot} connected={connected} error={error} onError={setError} isDiscord={mode === "discord"} />;
 }
 
-function BootstrapScreen({ connected, error, progress, displayName, onRetry }: { connected: boolean; error: string; progress: DiscordBootstrapProgress; displayName: string | undefined; onRetry: () => void }) {
+function BootstrapScreen({ connected, error, progress, wakeRequestPending, displayName, onWake, onRetry }: { connected: boolean; error: string; progress: DiscordBootstrapProgress; wakeRequestPending: boolean; displayName: string | undefined; onWake: () => void; onRetry: () => void }) {
   const message = progress === "waking" ? "Waking the game server… This can take up to two minutes." : progress === "authenticating" ? "Authenticating with Discord…" : "Connecting to the activity room…";
   return <main className="landing">
     <section className="hero"><p className="eyebrow">DISCORD ACTIVITY</p><h1>Robot<br />Rebound</h1><p>{displayName ? `Signed in as ${displayName}.` : "Starting the embedded session."}</p><span className={`connection ${connected ? "online" : ""}`}>{connected ? "Server connected" : "Connecting…"}</span></section>
-    <section className="entry-card"><h2>Preparing the room</h2><p>{error || message}</p>{error && <button onClick={onRetry}>Retry</button>}</section>
+    <section className="entry-card"><h2>Preparing the room</h2><p>{error || message}</p>{!error && progress === "waking" && <button className="secondary" disabled={wakeRequestPending} onClick={onWake}>{wakeRequestPending ? "Pinging server…" : "Wake server now"}</button>}{error && <button onClick={onRetry}>Retry</button>}</section>
   </main>;
 }
 
@@ -158,6 +159,7 @@ function Game({ snapshot, connected, error, onError, isDiscord }: { snapshot: Ro
   const [selectedRobot, setSelectedRobot] = useState<RobotId | null>(null);
   const [bid, setBid] = useState("");
   const [solverResult, setSolverResult] = useState<SolverResult | null>(null);
+  const bidAlert = useBidAlerts(snapshot);
   const solverTarget = "target" in snapshot ? snapshot.target : null;
   const solverRound = "round" in snapshot ? snapshot.round : null;
   const deadline = "deadline" in snapshot && snapshot.deadline !== null ? snapshot.deadline : undefined;
@@ -234,6 +236,7 @@ function Game({ snapshot, connected, error, onError, isDiscord }: { snapshot: Ro
   };
 
   return <main className={`game-shell ${(canPlace || canProve) ? "active-turn" : ""}`}>
+    <div className="bid-alert-region" aria-live="assertive" aria-atomic="true">{bidAlert && <div key={bidAlert.key} className="bid-alert-layer"><div className="bid-edge-flash" /><div className="bid-alert"><b>{bidAlert.name}</b><span>bid {bidAlert.count} moves</span></div></div>}</div>
     <header><div><span className="mini-mark">RR</span><strong>Robot Rebound</strong></div><div className="room-code">{isDiscord ? "Discord Activity" : <>Room <b>{snapshot.code}</b><button className="copy" onClick={() => navigator.clipboard.writeText(snapshot.code)}>Copy</button></>}</div><span className={`connection ${connected ? "online" : ""}`}>{connected ? "Live" : "Reconnecting"}</span></header>
     <section className="status-bar"><div><p className="eyebrow">{snapshot.phase === "lobby" || snapshot.phase === "results" ? "MATCH" : `ROUND ${snapshot.round} / ${snapshot.roundCount}`}</p><h1>{title}</h1></div>{deadline && <div className="timer" aria-label={`${seconds} seconds remaining`}><b>{seconds}</b><span>seconds</span></div>}{unlimitedProof && <div className="timer unlimited" aria-label="Unlimited proof time"><b>∞</b><span>unlimited</span></div>}</section>
     <div className="game-grid">
@@ -253,6 +256,56 @@ function Game({ snapshot, connected, error, onError, isDiscord }: { snapshot: Ro
       </aside>
     </div>
   </main>;
+}
+
+interface BidAlert {
+  key: string;
+  name: string;
+  count: number;
+}
+
+function useBidAlerts(snapshot: RoomSnapshot): BidAlert | null {
+  const [queue, setQueue] = useState<BidAlert[]>([]);
+  const seen = useRef(new Set<string>());
+  const observedRound = useRef<number | null>(null);
+  const initialized = useRef(false);
+
+  useEffect(() => {
+    const round = "round" in snapshot ? snapshot.round : null;
+    const hasBids = snapshot.phase === "bidding" || snapshot.phase === "proving";
+
+    if (!initialized.current) {
+      initialized.current = true;
+      observedRound.current = round;
+      if (hasBids) snapshot.bids.forEach((item) => seen.current.add(`${round}:${item.playerId}`));
+      return;
+    }
+
+    if (round !== observedRound.current) {
+      observedRound.current = round;
+      seen.current.clear();
+      setQueue([]);
+    }
+    if (!hasBids) return;
+
+    const additions = [...snapshot.bids]
+      .sort((a, b) => a.receivedAt - b.receivedAt)
+      .flatMap((item) => {
+        const key = `${round}:${item.playerId}`;
+        if (seen.current.has(key)) return [];
+        seen.current.add(key);
+        return [{ key, name: snapshot.players.find((player) => player.id === item.playerId)?.name ?? "A player", count: item.count }];
+      });
+    if (additions.length > 0) setQueue((current) => [...current, ...additions]);
+  }, [snapshot]);
+
+  useEffect(() => {
+    if (queue.length === 0) return;
+    const timer = window.setTimeout(() => setQueue((current) => current.slice(1)), 1_200);
+    return () => window.clearTimeout(timer);
+  }, [queue]);
+
+  return queue[0] ?? null;
 }
 
 function ActionPanel({ snapshot, selfId, bid, setBid, alreadyBid, solverResult, command }: { snapshot: RoomSnapshot; selfId: string; bid: string; setBid: (value: string) => void; alreadyBid: boolean; solverResult: SolverResult | null; command: (event: string, payload?: object) => void }) {

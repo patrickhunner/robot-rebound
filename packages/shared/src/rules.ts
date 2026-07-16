@@ -10,6 +10,12 @@ export function movementDurationMs(speed: AnimationSpeed, distance: number, boar
   return Math.round(animationDurationMs(speed) * distance / Math.max(1, boardSize - 1));
 }
 
+export const playbackSettleMs = 75;
+
+export function playbackDelayMs(speed: AnimationSpeed, distance: number, boardSize = 16): number {
+  return movementDurationMs(speed, distance, boardSize) + playbackSettleMs;
+}
+
 const delta: Record<Direction, Position> = {
   north: { row: -1, col: 0 }, east: { row: 0, col: 1 }, south: { row: 1, col: 0 }, west: { row: 0, col: -1 }
 };

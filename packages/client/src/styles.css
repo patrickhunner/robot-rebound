@@ -171,7 +171,7 @@ label {
 }
 
 .game-shell {
-  max-width: 1500px;
+  max-width: 1650px;
   margin: auto;
   padding: 0 2rem 3rem;
 }
@@ -249,7 +249,7 @@ header > div {
 
 .game-grid {
   display: grid;
-  grid-template-columns: 240px minmax(620px, 1fr) 300px;
+  grid-template-columns: 240px minmax(700px, 1fr) 300px;
   gap: 1.5rem;
   align-items: start;
 }
@@ -259,7 +259,7 @@ header > div {
 }
 
 .board {
-  width: min(70vh, 760px);
+  width: min(80vh, 875px);
   max-width: 100%;
   aspect-ratio: 1;
   display: grid;
@@ -445,12 +445,53 @@ header > div {
 
 .target-banner {
   margin: 0 0 0.8rem;
-  padding: 0.75rem 1rem;
+  padding: 1rem 1.25rem;
   border-left: 5px solid currentColor;
   background: white;
   display: flex;
-  gap: 0.8rem;
+  gap: 1rem;
+  align-items: center;
+  font-size: 1.05rem;
   text-transform: capitalize;
+}
+
+.target-banner > span {
+  font-size: 1.35rem;
+}
+
+.bid-alert-region,
+.bid-alert-layer,
+.bid-edge-flash {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.bid-alert {
+  position: absolute;
+  top: 5.25rem;
+  left: 50%;
+  min-width: 15rem;
+  padding: 0.75rem 1rem;
+  transform: translateX(-50%);
+  display: flex;
+  justify-content: center;
+  gap: 0.45rem;
+  background: var(--ink);
+  color: white;
+  border: 2px solid var(--acid);
+  box-shadow: 6px 6px 0 #899f54;
+  animation: bid-alert 1.2s ease both;
+}
+
+.bid-alert span {
+  color: var(--acid);
+}
+
+.bid-edge-flash {
+  box-shadow: inset 0 0 0 8px var(--acid);
+  animation: bid-edge-flash 1.2s ease-out both;
 }
 
 .target-red {
@@ -756,13 +797,27 @@ header > div {
   }
 }
 
+@keyframes bid-alert {
+  0% { opacity: 0; transform: translate(-50%, -0.6rem); }
+  12%, 78% { opacity: 1; transform: translate(-50%, 0); }
+  100% { opacity: 0; transform: translate(-50%, -0.25rem); }
+}
+
+@keyframes bid-edge-flash {
+  0% { opacity: 0; }
+  10% { opacity: 0.85; }
+  45%, 100% { opacity: 0; }
+}
+
 .waiting-action {
   animation: waiting-pulse 1.15s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .waiting-action,
-  .active-target .destination {
+  .active-target .destination,
+  .bid-alert,
+  .bid-edge-flash {
     animation: none;
   }
 

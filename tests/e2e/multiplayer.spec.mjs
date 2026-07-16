@@ -53,8 +53,13 @@ test("two isolated players create, join, and start a match", async ({ browser })
   await expect(host.getByLabel("Move count")).toBeFocused();
   await expect(host.locator(".quick-bids button")).toHaveCount(30);
   await host.locator(".quick-bids").getByRole("button", { name: "5", exact: true }).click();
+  await expect(host.locator(".bid-alert")).toContainText("Ada");
+  await expect(host.locator(".bid-alert")).toContainText("bid 5 moves");
+  await expect(guest.locator(".bid-alert")).toContainText("Ada");
   await expect(guest.getByLabel("Move count")).toBeFocused();
   await guest.locator(".quick-bids").getByRole("button", { name: "6", exact: true }).click();
+  await expect(host.locator(".bid-alert")).toContainText("Grace", { timeout: 3_000 });
+  await expect(host.locator(".bid-alert")).toContainText("bid 6 moves");
   await expect(host.locator(".proof-status>strong")).toContainText("0 / 5");
   await expect(host.getByRole("button", { name: "Reset proof" })).toBeVisible();
   await expect(host.locator(".game-shell")).toHaveClass(/active-turn/);

@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import {
-  createRandomBoard, moveRobot, movementDurationMs, randomRobotPositions, targetSatisfied, validatePlacement,
+  createRandomBoard, moveRobot, playbackDelayMs, randomRobotPositions, targetSatisfied, validatePlacement,
   type AnimationSpeed, type BidView, type BiddingSeconds, type BoardDefinition, type Direction, type PlayerView, type Position, type ProofSeconds, type RobotId,
   type RobotLocks, type RobotPositions, type RoomSnapshot, type SolutionMove, type Target
 } from "@robot-rebound/shared";
@@ -259,7 +259,7 @@ export class GameRoom {
     phase.locks = {};
     phase.playback = { moves: structuredClone(moves), index: 0 };
     this.broadcast(this.code);
-    this.schedule(movementDurationMs(this.animationSpeed, resetDistance, this.board.size), () => this.advancePlayback());
+    this.schedule(playbackDelayMs(this.animationSpeed, resetDistance, this.board.size), () => this.advancePlayback());
   }
 
   advanceReview(playerId: string): void {
@@ -434,7 +434,7 @@ export class GameRoom {
     this.phase.moveCount++;
     this.phase.playback.index++;
     this.broadcast(this.code);
-    this.schedule(movementDurationMs(this.animationSpeed, distance, this.board.size), () => this.advancePlayback());
+    this.schedule(playbackDelayMs(this.animationSpeed, distance, this.board.size), () => this.advancePlayback());
   }
 
   private orderedBids(bids: Bid[]): Bid[] { return [...bids].sort((a, b) => a.count - b.count || a.order - b.order); }
